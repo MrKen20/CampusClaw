@@ -72,7 +72,9 @@
 | 模式 | 路径 | 排序 |
 | --- | --- | --- |
 | `keyword` | MySQL 全文索引（`MATCH ... AGAINST`，仅 `index_status = ready`） | 全文相关度降序 |
-| `vector` | 问句嵌入 → Qdrant 按 `class_id` 过滤 + 余弦检索 → 相似度 **< 0.35 丢弃** → 主键回 MySQL | 余弦相似度降序 |
+| `vector` | 问句嵌入 → Qdrant 按 `class_id` 过滤 + 余弦检索 → 相似度**低于阈值丢弃**（`VECTOR_SCORE_THRESHOLD`）→ 主键回 MySQL | 余弦相似度降序 |
+
+阈值标定依据（Apply 阶段实测）：课程嵌入网关（course-embedding）对 2048 维向量的余弦分布整体偏低——正确切片对同义改写问句得分 0.25–0.35、近原句 0.43，跨班无关切片 ≤0.21。原 0.35 默认值会误杀大量语义改写命中，故课程环境部署值定为 **0.25**（仍可干净区分跨班噪声），通过环境变量可调，规约只约束「低于配置阈值的候选必须丢弃」。
 | `hybrid`（默认） | 并发执行两路，各自独立过滤 | 每片 RRF 分 `1/(60+rank)` 求和，降序 |
 
 - RRF 融合的是**名次**而非分数；缺席的一路不贡献分数；`k = 60` 为常数，非相关性阈值。
@@ -139,7 +141,7 @@ CREATE TABLE knowledge_chunks (
 
 ## 配置与启动（.env.example 新增）
 
-`EMBEDDING_API_BASE`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`、`EMBEDDING_DIM`、`CHAT_API_BASE`、`CHAT_API_KEY`、`CHAT_MODEL`、`QDRANT_URL`、`CHUNK_AUTO_MAX_CHARS`（默认 800）、`CHUNK_AUTO_OVERLAP`（默认 80）、`VECTOR_SCORE_THRESHOLD`（默认 0.35）、`RRF_K`（默认 60）、`ASK_TOP_K`（默认 4）。均为必填或带文档化默认值；密钥缺失即启动失败。Compose 新增 qdrant 服务与 `qdrant_data` volume，不映射端口。
+`EMBEDDING_API_BASE`、`EMBEDDING_API_KEY`、`EMBEDDING_MODEL`、`EMBEDDING_DIM`、`CHAT_API_BASE`、`CHAT_API_KEY`、`CHAT_MODEL`、`QDRANT_URL`、`CHUNK_AUTO_MAX_CHARS`（默认 800）、`CHUNK_AUTO_OVERLAP`（默认 80）、`VECTOR_SCORE_THRESHOLD`（课程部署 0.25，见 D5 标定依据）、`RRF_K`（默认 60）、`ASK_TOP_K`（默认 4）。均为必填或带文档化默认值；密钥缺失即启动失败。Compose 新增 qdrant 服务与 `qdrant_data` volume，不映射端口。
 
 ## Risks / Trade-offs
 

@@ -71,7 +71,7 @@
 
 ### Requirement: 三种检索模式
 
-系统 MUST 提供 `keyword`、`vector`、`hybrid`（默认）三种检索模式。`keyword` 仅查询 MySQL ngram 全文索引，MUST NOT 调用嵌入服务或访问 Qdrant；`vector` 将问句嵌入后在 Qdrant 按余弦相似度检索，相似度低于 0.35 的候选 MUST 丢弃，再以向量主键回 MySQL 取回正文；`hybrid` MUST 并发执行两路、各自独立过滤后按名次做 RRF 融合（k = 60），缺席的一路 MUST NOT 贡献分数。
+系统 MUST 提供 `keyword`、`vector`、`hybrid`（默认）三种检索模式。`keyword` 仅查询 MySQL ngram 全文索引，MUST NOT 调用嵌入服务或访问 Qdrant；`vector` 将问句嵌入后在 Qdrant 按余弦相似度检索，相似度低于阈值（`VECTOR_SCORE_THRESHOLD`，课程嵌入网关模型下按实测分布标定为 0.25）的候选 MUST 丢弃，再以向量主键回 MySQL 取回正文；`hybrid` MUST 并发执行两路、各自独立过滤后按名次做 RRF 融合（k = 60），缺席的一路 MUST NOT 贡献分数。
 
 #### Scenario: keyword 命中原词
 
@@ -83,7 +83,7 @@
 
 - **WHEN** 用户以同义改写（原词未出现但语义相近）发起 vector 检索
 - **THEN** 语义相近的切片 MUST 仍可命中
-- **AND** 余弦相似度低于 0.35 的候选 MUST NOT 出现在结果中
+- **AND** 余弦相似度低于配置阈值的候选 MUST NOT 出现在结果中
 
 #### Scenario: hybrid RRF 融合
 
