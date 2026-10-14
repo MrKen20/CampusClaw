@@ -1,219 +1,23 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import {
-  api,
-  uploadMaterial,
-  type MaterialDetail,
-  type MaterialSummary,
-  type Me,
-} from '../api'
+import { api, uploadMaterial, downloadMaterial, type MaterialDetail, type MaterialSummary, type Me } from '../api'
 import { useToast } from '../components/Toast'
+import Icon from '../components/Icon'
+import { categories, materialCategory, latestRequest } from '../library'
 import type { Theme } from '../App'
-
-interface Props {
-  me: Me
-  theme: Theme
-  onToggleTheme: () => void
-  onLogout: () => void
-  onOpenAsk: () => void
-  jumpToDetail: number | null
-  onJumpConsumed: () => void
-}
-
-export default function MaterialsPage({ me, jumpToDetail, onJumpConsumed }: Props) {
-  const [items, setItems] = useState<MaterialSummary[]>([])
-  const [query, setQuery] = useState('')
-  const [view, setView] = useState<'list' | 'grid'>('list')
-  const [detail, setDetail] = useState<MaterialDetail | null>(null)
-  const [paletteOpen, setPaletteOpen] = useState(false)
-  const [paletteQuery, setPaletteQuery] = useState('')
-  const [progress, setProgress] = useState<number | null>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
-  const toast = useToast()
-
-  const refresh = useCallback(
-    async (q: string) => {
-      try {
-        setItems(await api.listMaterials(q))
-      } catch (err) {
-        if (err instanceof Error && err.message !== '未登录') {
-          toast(err.message, true)
-        }
-      }
-    },
-    [toast],
-  )
-
-  useEffect(() => {
-    refresh('')
-  }, [refresh])
-
-  // 从检索/问答命中跳转过来时直接打开材料详情（沿用第 3 课鉴权与 404 语义）。
-  useEffect(() => {
-    if (jumpToDetail !== null) {
-      openDetail(jumpToDetail)
-      onJumpConsumed()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jumpToDetail])
-
-  // ⌘/Ctrl+K 唤起命令面板（spec「界面体验」）。
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault()
-        setPaletteOpen((v) => !v)
-        setPaletteQuery('')
-      }
-      if (e.key === 'Escape') {
-        setPaletteOpen(false)
-        setDetail(null)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-
-  async function openDetail(id: number) {
-    try {
-      setDetail(await api.materialDetail(id))
-    } catch (err) {
-      // 403/404 按服务端语义提示，不改变语义（spec R9）。
-      const message = err instanceof Error ? err.message : '加载失败'
-      if (message !== '未登录') toast(message, true)
-    }
-  }
-
-  async function onPickFile(file: File | undefined) {
-    if (!file) return
-    setProgress(0)
-    try {
-      const result = await uploadMaterial(file, '', setProgress)
-      toast(`已上传「${result.title}」`)
-      await refresh(query)
-    } catch (err) {
-      if (err instanceof Error && err.message !== '未登录') toast(err.message, true)
-    } finally {
-      setProgress(null)
-      if (fileInput.current) fileInput.current.value = ''
-    }
-  }
-
-  const paletteItems = items.filter((m) =>
-    m.title.toLowerCase().includes(paletteQuery.toLowerCase()),
-  )
-
-  return (
-    <>
-      <main className="container">
-        <div className="toolbar">
-          <input
-            className="search"
-            type="text"
-            placeholder="搜索本班材料标题或正文…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value)
-              refresh(e.target.value)
-            }}
-          />
-          <button onClick={() => setView(view === 'list' ? 'grid' : 'list')}>
-            {view === 'list' ? '网格视图' : '列表视图'}
-          </button>
-          {/* 上传入口依据 /api/me 的角色渲染；隐藏不构成权限，服务端仍会拒绝学生（spec R2/R9） */}
-          {me.role === 'teacher' && (
-            <>
-              <button className="primary" onClick={() => fileInput.current?.click()}>
-                上传材料
-              </button>
-              <input
-                ref={fileInput}
-                type="file"
-                accept=".txt,.md"
-                hidden
-                onChange={(e) => onPickFile(e.target.files?.[0])}
-              />
-            </>
-          )}
-        </div>
-
-        {progress !== null && (
-          <div className="progress-track">
-            <div className="progress-bar" style={{ width: `${progress}%` }} />
-          </div>
-        )}
-
-        {items.length === 0 ? (
-          <div className="empty">本班暂无材料</div>
-        ) : (
-          <div className={view === 'list' ? 'material-list' : 'material-grid'}>
-            {items.map((m) => (
-              <div key={m.id} className="material-item" onClick={() => openDetail(m.id)}>
-                <div className="title">{m.title}</div>
-                <div className="meta">
-                  {m.class_name} · {new Date(m.created_at).toLocaleString()}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-
-      {detail && (
-        <div className="modal-mask" onClick={() => setDetail(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <h2>{detail.title}</h2>
-              <a href={`/api/materials/${detail.id}/file`} download>
-                下载
-              </a>
-              <button onClick={() => setDetail(null)}>关闭</button>
-            </div>
-            <div className="meta" style={{ color: 'var(--text-dim)', marginBottom: 12 }}>
-              {detail.class_name} · {new Date(detail.created_at).toLocaleString()}
-            </div>
-            {/* react-markdown 默认不渲染原始 HTML，材料中的脚本不会被执行（spec R9 渲染安全） */}
-            <article className="markdown-body">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{detail.body}</ReactMarkdown>
-            </article>
-          </div>
-        </div>
-      )}
-
-      {paletteOpen && (
-        <div className="palette" onClick={() => setPaletteOpen(false)}>
-          <div className="palette-box" onClick={(e) => e.stopPropagation()}>
-            <input
-              autoFocus
-              type="text"
-              placeholder="搜索本班材料并回车打开…（Esc 关闭）"
-              value={paletteQuery}
-              onChange={(e) => setPaletteQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && paletteItems[0]) {
-                  setPaletteOpen(false)
-                  openDetail(paletteItems[0].id)
-                }
-              }}
-            />
-            {paletteItems.slice(0, 8).map((m, i) => (
-              <div
-                key={m.id}
-                className={i === 0 ? 'palette-item active' : 'palette-item'}
-                onClick={() => {
-                  setPaletteOpen(false)
-                  openDetail(m.id)
-                }}
-              >
-                <span>{m.title}</span>
-                <span className="hint">{m.class_name}</span>
-              </div>
-            ))}
-            {paletteItems.length === 0 && <div className="palette-item hint">无匹配材料</div>}
-          </div>
-        </div>
-      )}
-    </>
-  )
+interface Props {me:Me;theme:Theme;onToggleTheme:()=>void;onLogout:()=>void;onOpenAsk:()=>void;jumpToDetail:number|null;onJumpConsumed:()=>void}
+export default function MaterialsPage({me,jumpToDetail,onJumpConsumed}:Props){
+ const toast=useToast(),[items,setItems]=useState<MaterialSummary[]>([]),[query,setQuery]=useState(''),[category,setCategory]=useState('全部'),[detail,setDetail]=useState<MaterialDetail|null>(null),[selected,setSelected]=useState<number|null>(null),[loading,setLoading]=useState(true),[reading,setReading]=useState(false),[error,setError]=useState(''),[palette,setPalette]=useState(false),[paletteQuery,setPaletteQuery]=useState(''),[progress,setProgress]=useState<number|null>(null),[downloading,setDownloading]=useState(false),[grid,setGrid]=useState(false)
+ const file=useRef<HTMLInputElement>(null),listGate=useRef(latestRequest()),detailGate=useRef(latestRequest())
+ async function refresh(q:string){const id=listGate.current.begin();setLoading(true);try{const data=await api.listMaterials(q);if(listGate.current.current(id))setItems(data)}catch(e){if(listGate.current.current(id))toast(e instanceof Error?e.message:'资料加载失败',true)}finally{if(listGate.current.current(id))setLoading(false)}}
+ useEffect(()=>{const gate=listGate.current;gate.cancel();const timer=setTimeout(()=>void refresh(query),180);return()=>{clearTimeout(timer);gate.cancel()}},[query,me.id])
+ useEffect(()=>{const gate=detailGate.current;return()=>gate.cancel()},[])
+ useEffect(()=>{if(jumpToDetail!==null){void openDetail(jumpToDetail);onJumpConsumed()}},[jumpToDetail])
+ useEffect(()=>{const key=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPalette(v=>!v);setPaletteQuery('')}if(e.key==='Escape')setPalette(false)};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[])
+ async function openDetail(id:number){const request=detailGate.current.begin();setSelected(id);setDetail(null);setError('');setReading(true);setGrid(false);try{const d=await api.materialDetail(id);if(detailGate.current.current(request))setDetail(d)}catch(e){if(detailGate.current.current(request))setError(e instanceof Error?e.message:'无法读取资料')}finally{if(detailGate.current.current(request))setReading(false)}}
+ async function upload(f:File|undefined){if(!f)return;setProgress(0);try{const result=await uploadMaterial(f,'',setProgress);toast(`已上传「${result.title}」`);await refresh(query);await openDetail(result.id)}catch(e){toast(e instanceof Error?e.message:'上传失败',true)}finally{setProgress(null);if(file.current)file.current.value=''}}
+ async function download(){if(!detail)return;setDownloading(true);try{await downloadMaterial(detail.id,detail.title)}catch(e){toast(e instanceof Error?e.message:'下载失败',true)}finally{setDownloading(false)}}
+ const filtered=items.filter(m=>category==='全部'||materialCategory(m.title)===category),paletteItems=items.filter(m=>m.title.toLowerCase().includes(paletteQuery.toLowerCase()))
+ return <main className="library-workspace"><aside className="library-rail"><div className="rail-heading"><h2>资料库</h2><span className="count-chip">{items.length}</span></div><label className="search-field"><Icon name="search" size={16}/><input aria-label="搜索本班资料" placeholder="搜索标题或正文" value={query} onChange={e=>setQuery(e.target.value)}/></label><button className="category-root" aria-pressed={category==='全部'} onClick={()=>setCategory('全部')}><Icon name="book" size={18}/>本班资料<span>{items.length}</span></button><div className="category-list">{categories.map(c=><button key={c} className={category===c?'active':''} aria-pressed={category===c} onClick={()=>setCategory(c)}><Icon name="chevron" size={12}/>{c}<span>{items.filter(m=>materialCategory(m.title)===c).length}</span></button>)}</div><div className="library-list-heading">{category==='全部'?'全部资料':category+'资料'}<button className="icon-button" aria-label="打开资料搜索面板" onClick={()=>setPalette(true)}><Icon name="search" size={14}/></button></div><div className="library-file-list">{loading?<p className="hint">正在加载资料…</p>:filtered.map(m=><button className={'library-file '+(selected===m.id?'active':'')} key={m.id} onClick={()=>void openDetail(m.id)}><Icon name="file" size={16}/><span>{m.title}</span></button>)}{!loading&&filtered.length===0&&<p className="hint">{query?'没有匹配资料，请尝试其他关键词。':'此分类暂无资料。'}</p>}</div><div className="library-rail-footer"><small>按标题自动归类 · 仅展示本班资料</small><button onClick={()=>{setGrid(v=>!v);detailGate.current.cancel();setReading(false)}}><Icon name="grid" size={15}/>{grid?'返回阅读':'网格浏览'}</button>{me.role==='teacher'&&<button className="primary" disabled={progress!==null} onClick={()=>file.current?.click()}><Icon name="upload" size={15}/>{progress!==null?'正在上传…':'上传资料'}</button>}<input hidden ref={file} type="file" accept=".md,.txt" onChange={e=>void upload(e.target.files?.[0])}/>{progress!==null&&<div className="progress-track"><div className="progress-bar" style={{width:progress+'%'}}/></div>}</div></aside><section className="document-area">{grid?<><header className="document-heading"><div><span className="eyebrow">班级知识空间</span><h1>{category==='全部'?'本班资料':category+'资料'}</h1></div><span className="count-chip">{filtered.length} 份资料</span></header><div className="material-grid">{filtered.map(m=><button className="document-tile" key={m.id} onClick={()=>void openDetail(m.id)}><Icon name="file" size={30}/><strong>{m.title}</strong><small>{materialCategory(m.title)} · {new Date(m.created_at).toLocaleDateString()}</small></button>)}</div></>:reading?<div className="empty-state"><span className="loading-dot"/> 正在读取资料…</div>:error?<div className="empty-state" role="alert"><h2>暂时无法打开资料</h2><p>{error}</p><button onClick={()=>selected&&void openDetail(selected)}>重新加载</button></div>:detail?<><header className="document-heading"><div><span className="eyebrow">{materialCategory(detail.title)} · {detail.class_name}</span><h1>{detail.title}</h1><p>{new Date(detail.created_at).toLocaleString()} · 本班共享资料</p></div><button disabled={downloading} onClick={()=>void download()}><Icon name="download" size={16}/>{downloading?'下载中…':'下载原文'}</button></header><article className="document-paper markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{detail.body}</ReactMarkdown></article></>:<div className="library-welcome"><span className="welcome-glyph"><Icon name="book" size={38}/></span><div className="eyebrow">班级知识空间</div><h1>让知识，随时可查。</h1><p>从左侧选择一份资料，专注阅读和思考。<br/>这里的每一份讲义，都属于你们班级。</p><button onClick={()=>setGrid(true)}><Icon name="grid" size={16}/>浏览全部资料</button></div>}</section>{palette&&<div className="palette" onClick={()=>setPalette(false)}><section className="palette-box" role="dialog" aria-modal="true" aria-label="搜索资料" onClick={e=>e.stopPropagation()}><input autoFocus placeholder="输入资料标题 · Esc 关闭" aria-label="搜索资料标题" value={paletteQuery} onChange={e=>setPaletteQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&paletteItems[0]){setPalette(false);void openDetail(paletteItems[0].id)}}}/>{paletteItems.slice(0,8).map(m=><button className="palette-item" key={m.id} onClick={()=>{setPalette(false);void openDetail(m.id)}}><Icon name="file" size={16}/>{m.title}</button>)}{paletteItems.length===0&&<p className="empty">没有匹配的资料</p>}</section></div>}</main>
 }

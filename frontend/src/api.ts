@@ -182,3 +182,15 @@ export function uploadMaterial(
     xhr.send(form)
   })
 }
+
+// File requests must carry the same Bearer credentials as detail requests.
+export async function materialFile(id:number):Promise<Blob>{
+ const res=await fetch(`/api/materials/${id}/file`,{headers:authHeaders()})
+ if(res.status===401){handleUnauthorized();throw new Error('未登录')}
+ if(!res.ok){const data=await res.json().catch(()=>({}));throw new Error(data.error??`下载失败（${res.status}）`)}
+ return res.blob()
+}
+export async function downloadMaterial(id:number,title:string){
+ const blob=await materialFile(id),url=URL.createObjectURL(blob),link=document.createElement('a')
+ link.href=url;link.download=title.replace(/[\\/:*?"<>|]/g,'_');document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+}
