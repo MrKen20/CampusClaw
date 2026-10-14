@@ -16,9 +16,12 @@ interface Props {
   theme: Theme
   onToggleTheme: () => void
   onLogout: () => void
+  onOpenAsk: () => void
+  jumpToDetail: number | null
+  onJumpConsumed: () => void
 }
 
-export default function MaterialsPage({ me, theme, onToggleTheme, onLogout }: Props) {
+export default function MaterialsPage({ me, theme, onToggleTheme, onLogout, onOpenAsk, jumpToDetail, onJumpConsumed }: Props) {
   const [items, setItems] = useState<MaterialSummary[]>([])
   const [query, setQuery] = useState('')
   const [view, setView] = useState<'list' | 'grid'>('list')
@@ -45,6 +48,15 @@ export default function MaterialsPage({ me, theme, onToggleTheme, onLogout }: Pr
   useEffect(() => {
     refresh('')
   }, [refresh])
+
+  // 从检索/问答命中跳转过来时直接打开材料详情（沿用第 3 课鉴权与 404 语义）。
+  useEffect(() => {
+    if (jumpToDetail !== null) {
+      openDetail(jumpToDetail)
+      onJumpConsumed()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpToDetail])
 
   // ⌘/Ctrl+K 唤起命令面板（spec「界面体验」）。
   useEffect(() => {
@@ -100,6 +112,7 @@ export default function MaterialsPage({ me, theme, onToggleTheme, onLogout }: Pr
           {me.username} · {me.role === 'teacher' ? '教师' : '学生'} · {me.class_name}
         </span>
         <span className="spacer" />
+        <button onClick={onOpenAsk}>知识问答</button>
         <button onClick={() => setPaletteOpen(true)}>⌘K 搜索</button>
         <button onClick={onToggleTheme}>{theme === 'light' ? '深色' : '浅色'}</button>
         <button onClick={onLogout}>登出</button>

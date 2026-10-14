@@ -1,5 +1,7 @@
-// API 封装：同源 /api；任何 401 都会清空本地身份并回登录页（spec R1）。
-// 前端不存储角色（无 localStorage），身份一律以 GET /api/me 为准。
+// API 封装：同源 /api；凭据为登录下发的不透明 Token——
+// 存 localStorage（键 campusclaw_token，作业图示要求），请求经 Authorization: Bearer 头携带；
+// 任何 401 都会清除本地 Token 并回登录页（spec R1）。
+// 前端不存储角色（localStorage 只有 token），身份一律以 GET /api/me 为准。
 
 export interface Me {
   id: number
@@ -20,15 +22,75 @@ export interface MaterialDetail extends MaterialSummary {
   body: string
 }
 
+// ===== 第 4 课：知识库检索与问答 =====
+
+/** 一条可溯源的检索命中（材料标题、切片序号、字符区间、摘录齐备）。 */
+export interface SearchHit {
+  material_id: number
+  material_title: string
+  chunk_id: number
+  chunk_index: number
+  char_start: number
+  char_end: number
+  excerpt: string
+  keyword_score?: number
+  vector_score?: number
+  rrf_score?: number
+}
+
+/** 问答引用出处，[n] 与 citations 顺序一致。 */
+export interface Citation {
+  index: number
+  material_id: number
+  material_title: string
+  chunk_index: number
+  char_start: number
+  char_end: number
+  excerpt: string
+}
+
+export interface AskResponse {
+  answer: string
+  citations: Citation[]
+}
+
+export type SearchMode = 'keyword' | 'vector' | 'hybrid'
+
+// localStorage 中仅存不透明 Token，不存角色/班级等授权判断依据（spec R2/R9）。
+const TOKEN_KEY = 'campusclaw_token'
+
+export function getToken(): string {
+  return localStorage.getItem(TOKEN_KEY) ?? ''
+}
+
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token)
+}
+
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY)
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 let onUnauthorized: () => void = () => {}
 export function setUnauthorizedHandler(fn: () => void) {
   onUnauthorized = fn
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, { credentials: 'same-origin', ...init })
+// 统一的 401 处理：清除本地 Token 并回登录页（spec R1「前端收到 401 回登录页」）。
+function handleUnauthorized() {
+  clearToken()
+  onUnauthorized()
+}
+
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, { ...init, headers: { ...authHeaders(), ...init?.headers } })
   if (res.status === 401) {
-    onUnauthorized()
+    handleUnauthorized()
     throw new Error('未登录')
   }
   const data = await res.json().catch(() => ({}))
@@ -42,20 +104,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  login: (username: string, password: string) =>
-    request<Me>('/api/login', {
+  login: async (username: string, password: string): Promise<Me> => {
+    const data = await request<{ token: string; user: Me }>('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
-    }),
-  logout: () => request<{ ok: boolean }>('/api/logout', { method: 'POST' }),
+    })
+    setToken(data.token) // 登录成功：Token 写入 localStorage（spec R1「Token 存储于 localStorage」）
+    return data.user
+  },
+  logout: async () => {
+    try {
+      await request<{ ok: boolean }>('/api/logout', { method: 'POST' })
+    } finally {
+      clearToken() // 服务端删行 + 本地清除，无论响应成败都退出登录态（design.md D6）
+    }
+  },
   me: () => request<Me>('/api/me'),
   listMaterials: (q: string) =>
     request<MaterialSummary[]>(`/api/materials${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   materialDetail: (id: number) => request<MaterialDetail>(`/api/materials/${id}`),
+  // 第 4 课：检索与问答均只指向本站 /api（前端绝不直连 Qdrant 或网关）
+  search: (query: string, mode: SearchMode) =>
+    request<{ mode: SearchMode; hits: SearchHit[] }>('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, mode }),
+    }),
+  ask: (question: string, history: { role: string; content: string }[]) =>
+    request<AskResponse>('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, history }),
+    }),
 }
 
-// 上传走 XHR 以获得进度事件（spec「界面体验」上传进度）。
+// 上传走 XHR 以获得进度事件（spec「界面体验」上传进度）；同样携带 Bearer Token。
 export function uploadMaterial(
   file: File,
   title: string,
@@ -67,13 +151,14 @@ export function uploadMaterial(
     if (title) form.append('title', title)
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/materials')
-    xhr.withCredentials = true
+    const token = getToken()
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`)
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100))
     }
     xhr.onload = () => {
       if (xhr.status === 401) {
-        onUnauthorized()
+        handleUnauthorized()
         reject(new Error('未登录'))
         return
       }
