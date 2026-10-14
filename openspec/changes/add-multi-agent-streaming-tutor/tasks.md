@@ -4,7 +4,7 @@
 - [x] 2.1 智能体/绑定、技能CRUD、私人会话CRUD、服务端权限；verify: Go构建与apitest配置/归属/禁用/跨班断言。
 ## 3. 检索与生成
 - [x] 3.1 绑定材料范围检索、历史与提示词组装；verify: mock/Go测试范围、路由、历史六条与无依据分支。
-- [ ] 3.2 真网关流、SSE与消息持久化、会话锁与取消；verify: Go流帧/故障/跨片引用测试及apitest双流并发、409、done正文数据库一致。
+- [x] 3.2 真网关流、SSE与消息持久化、会话锁与取消；verify: Go流帧/故障/跨片引用测试及apitest双流并发、409、done正文数据库一致。
 ## 4. 文档
 - [ ] 4.1 API注解生成OpenAPI、本地Swagger；verify: 生成器--check与路由完整性，浏览器Swagger带Bearer试调。
 ## 5. 前端

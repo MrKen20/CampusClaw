@@ -37,7 +37,7 @@ func BuildMessages(a Agent, sk *Skill, history []Message, hits []retrieval.Hit) 
 	if len(cites) == 0 {
 		prompt += "\n没有检索依据：仍按角色和技能作答，但不要写[n]出处编号，不得编造材料，不得整段回答‘资料中未找到相关内容’。"
 	} else {
-		prompt += "\n优先用用户消息里的编号资料，依据处标[1]等合法编号；每个编号必须对应提供的资料，不能编造。"
+		prompt += "\n优先用用户消息里的编号资料，引用资料的句子必须标[1]等合法编号，至少标注一次；每个编号必须对应提供的资料，不能编造。"
 	}
 	prompt += "\n" + dataBoundary
 	out := []retrieval.ChatMessage{{Role: "system", Content: prompt}}
@@ -75,7 +75,8 @@ func (f *CitationFilter) Feed(text string, final bool) string {
 		}
 		out.WriteString(f.pending[:i])
 		f.pending = f.pending[i:]
-		end := strings.IndexByte(f.pending, ']')
+		if len(f.pending)>1 && (f.pending[1]<'0'||f.pending[1]>'9') {out.WriteByte('[');f.pending=f.pending[1:];continue}
+ end := strings.IndexByte(f.pending, ']')
 		if end < 0 {
 			digits := true
 			for _, r := range f.pending[1:] {
