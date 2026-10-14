@@ -7,6 +7,8 @@ ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
+# 单元测试不过不构建镜像（切分策略等核心逻辑先验证再打包）
+RUN go vet ./... && go test ./...
 RUN CGO_ENABLED=0 go build -o /out/campusclaw-api ./cmd/server
 
 FROM alpine:3.20

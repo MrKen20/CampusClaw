@@ -1,8 +1,8 @@
-// Package auth 实现登录、登出、会话中间件与登录限流。
-// 关键约束（design.md D2/D8、spec R1/R2）：
-//   - 会话存服务端表，Cookie 只持不透明 ID；库中存 ID 的 HMAC（SESSION_SECRET）。
+// Package auth 实现登录、登出、Token 校验中间件与登录限流。
+// 关键约束（design.md D1/D2/D5、spec R1/R2）：
+//   - 会话存服务端表，Token 为不透明随机串经 Authorization: Bearer 头携带；库中存 Token 的 HMAC（SESSION_SECRET）。
 //   - 角色与班级每次请求从用户表读取，不采信客户端声明。
-//   - 登录成功换发新会话 ID；登出删会话行立即失效。
+//   - 登录成功换发新 Token（旧 Token 一并作废）；登出删会话行立即失效。
 //   - 账号不存在 / 口令错误 / 被限流三类失败响应完全同形。
 package auth
 
@@ -17,6 +17,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,7 +26,16 @@ import (
 	"campusclaw/backend/internal/config"
 )
 
-const CookieName = "campusclaw_session"
+// bearerPrefix 是受保护 API 读取凭据的请求头前缀（spec R1）。
+const bearerPrefix = "Bearer "
+
+// tokenKey 把不透明 Token 映射为库中存储的 HMAC 值：
+// 即使数据库泄露，攻击者也无法直接拿到可用的 Token。
+func (s *Service) tokenKey(id string) string {
+	mac := hmac.New(sha256.New, []byte(s.Cfg.SessionSecret))
+	mac.Write([]byte(id))
+	return hex.EncodeToString(mac.Sum(nil))
+}
 
 // User 是每次请求从数据库读出的授权上下文（用户、角色、班级三项齐备）。
 type User struct {
@@ -55,15 +65,8 @@ func NewService(d *sql.DB, cfg *config.Config) *Service {
 	return &Service{DB: d, Cfg: cfg, limiter: newRateLimiter(cfg.LoginFailLimit, cfg.LoginFailWindow)}
 }
 
-// sessionKey 把不透明会话 ID 映射为库中存储的 HMAC 值：
-// 即使数据库泄露，攻击者也无法直接拿到可用的会话 ID。
-func (s *Service) sessionKey(id string) string {
-	mac := hmac.New(sha256.New, []byte(s.Cfg.SessionSecret))
-	mac.Write([]byte(id))
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-func newSessionID() (string, error) {
+// newToken 生成 256-bit 随机不透明 Token（不含角色、班级等可读信息）。
+func newToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -85,6 +88,16 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+// bearerToken 从 Authorization 头解析 Bearer Token；缺失或格式不符返回空串，
+// 与「无效 Token」在中间件中一律 401 同形（不泄露校验细节，design.md D2）。
+func bearerToken(r *http.Request) string {
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, bearerPrefix) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(h, bearerPrefix))
+}
+
 // --- 登录 / 登出 / 身份 ---
 
 type loginRequest struct {
@@ -96,6 +109,7 @@ type loginRequest struct {
 var dummyHash = []byte("$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
 
 // Login 处理 POST /api/login。
+// @api {"method":"POST","path":"/api/login","summary":"登录签发不透明Token","auth":"public","status":200,"request":{"type":"object","properties":{"username":{"type":"string"},"password":{"type":"string","format":"password"}},"required":["username","password"]},"response":{"type":"object","properties":{"token":{"type":"string"},"user":{"$ref":"#/components/schemas/User"}}},"errors":{"401":"用户名或密码错误（含限流）","503":"服务暂时不可用"}}
 func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" || req.Password == "" {
@@ -136,66 +150,56 @@ func (s *Service) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	s.limiter.reset(key)
 
-	// 防会话固定：换发新会话 ID；若请求带了旧会话 Cookie 则一并作废。
-	if old, err := r.Cookie(CookieName); err == nil && old.Value != "" {
-		_, _ = s.DB.Exec(`DELETE FROM sessions WHERE id = ?`, s.sessionKey(old.Value))
+	// 防会话固定：换发新 Token；若请求带旧 Token（Authorization 头）则一并作废。
+	if old := bearerToken(r); old != "" {
+		_, _ = s.DB.Exec(`DELETE FROM sessions WHERE id = ?`, s.tokenKey(old))
 	}
-	sid, err := newSessionID()
+	token, err := newToken()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "服务器错误"})
 		return
 	}
 	expires := time.Now().Add(s.Cfg.SessionTTL)
 	if _, err := s.DB.Exec(`INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`,
-		s.sessionKey(sid), id, expires); err != nil {
+		s.tokenKey(token), id, expires); err != nil {
 		log.Printf("写入会话失败：%v", err)
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "服务暂时不可用"})
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     CookieName,
-		Value:    sid,
-		Path:     "/",
-		Expires:  expires,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode, // 本机 HTTP 环境不加 Secure（课件 s3）
-	})
-	// 登录成功即返回授权上下文（用户、角色、班级），与 GET /api/me 同构。
+	// 登录成功返回 Token 与授权上下文（user 与 GET /api/me 同构，design.md D4）；
+	// 不再 Set-Cookie，凭据改由前端存 localStorage 并经 Authorization 头携带。
 	var className string
 	if err := s.DB.QueryRow(`SELECT name FROM classes WHERE id = ?`, classID).Scan(&className); err != nil {
 		className = ""
 	}
-	writeJSON(w, http.StatusOK, User{ID: id, Username: username, Role: role, ClassID: classID, ClassName: className})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"token": token,
+		"user":  User{ID: id, Username: username, Role: role, ClassID: classID, ClassName: className},
+	})
 }
 
-// Logout 处理 POST /api/logout：删除服务端会话行，旧 Cookie 立即失效。
+// Logout 处理 POST /api/logout：删除服务端会话行，旧 Token 立即失效。
+// @api {"method":"POST","path":"/api/logout","summary":"撤销当前Token；无Token亦幂等成功","auth":"public","status":200,"request":null,"response":{"type":"object","properties":{"ok":{"type":"boolean"}}},"errors":{"503":"服务暂时不可用"},"description":"可携带Bearer撤销服务端会话；该接口不要求已有有效会话。"}
 func (s *Service) Logout(w http.ResponseWriter, r *http.Request) {
-	if c, err := r.Cookie(CookieName); err == nil && c.Value != "" {
-		_, _ = s.DB.Exec(`DELETE FROM sessions WHERE id = ?`, s.sessionKey(c.Value))
+	if t := bearerToken(r); t != "" {
+		_, _ = s.DB.Exec(`DELETE FROM sessions WHERE id = ?`, s.tokenKey(t))
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     CookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 // Me 处理 GET /api/me：返回用户、角色、班级三项，供前端决定上传入口。
+// @api {"method":"GET","path":"/api/me","summary":"读取身份、角色与班级","auth":"login","status":200,"request":null,"response":{"$ref":"#/components/schemas/User"},"errors":{"401":"未登录","503":"服务暂时不可用"}}
 func (s *Service) Me(w http.ResponseWriter, r *http.Request) {
 	u, _ := FromContext(r.Context())
 	writeJSON(w, http.StatusOK, u)
 }
 
-// Middleware 校验会话 Cookie 并把 User 注入上下文。
-// 未登录返回 401，响应体不含任何业务数据（spec R1 未登录 Scenario）。
+// Middleware 校验 Authorization: Bearer Token 并把 User 注入上下文。
+// 缺头、格式错误、无效或过期 Token 一律 401，响应体不含任何业务数据（spec R1 未登录 Scenario）。
 func (s *Service) Middleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(CookieName)
-		if err != nil || c.Value == "" {
+		t := bearerToken(r)
+		if t == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "未登录"})
 			return
 		}
@@ -205,7 +209,7 @@ func (s *Service) Middleware(next http.HandlerFunc) http.HandlerFunc {
 			FROM sessions s
 			JOIN users u ON u.id = s.user_id
 			JOIN classes c ON c.id = u.class_id
-			WHERE s.id = ? AND s.expires_at > NOW()`, s.sessionKey(c.Value))
+			WHERE s.id = ? AND s.expires_at > NOW()`, s.tokenKey(t))
 		if err := row.Scan(&u.ID, &u.Username, &u.Role, &u.ClassID, &u.ClassName); err != nil {
 			if err != sql.ErrNoRows {
 				log.Printf("会话查询失败：%v", err)

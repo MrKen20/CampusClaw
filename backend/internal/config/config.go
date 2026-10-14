@@ -25,6 +25,21 @@ type Config struct {
 	SessionTTL          time.Duration // 会话有效期
 	LoginFailLimit      int           // 登录失败限流阈值
 	LoginFailWindow     time.Duration // 登录失败统计窗口
+
+	// --- 第 4 课：知识库检索（嵌入/对话网关 + Qdrant），密钥缺失即启动失败 ---
+	EmbeddingBaseURL   string  // 嵌入网关地址（只到 /v1，程序自行接 /embeddings）
+	EmbeddingAPIKey    string  // 嵌入网关密钥（必填，不下发浏览器）
+	EmbeddingModel     string  // 嵌入模型名
+	EmbeddingDim       int     // 向量维度（Qdrant 集合创建时使用）
+	ChatBaseURL        string  // 对话网关地址（问答仅在检索命中后调用）
+	ChatAPIKey         string  // 对话网关密钥（必填）
+	ChatModel          string  // 对话模型名
+	QdrantURL          string  // Qdrant 地址（Compose 内部网络）
+	ChunkAutoMaxChars  int     // auto 切分窗口（默认 800）
+	ChunkAutoOverlap   int     // auto 切分重叠（默认 80）
+	VectorScoreCutoff  float64 // 向量相似度丢弃阈值（默认 0.35）
+	RRFK               int     // RRF 融合常数 k（默认 60）
+	AskTopK            int     // 问答取前 N 条切片（默认 4）
 }
 
 // required 返回环境变量值；缺失或为空时报错（失败即停，不回落默认值）。
@@ -46,6 +61,18 @@ func getenvInt64(name string, def int64) (int64, error) {
 		return 0, fmt.Errorf("环境变量 %s 必须为正整数，当前值 %q", name, v)
 	}
 	return n, nil
+}
+
+func getenvFloat(name string, def float64) (float64, error) {
+	v := os.Getenv(name)
+	if v == "" {
+		return def, nil
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || f < 0 {
+		return 0, fmt.Errorf("环境变量 %s 必须为非负小数，当前值 %q", name, v)
+	}
+	return f, nil
 }
 
 // Load 读取并校验配置；任一必填项缺失即返回错误，进程应退出。
@@ -108,6 +135,62 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	c.LoginFailWindow = time.Duration(windowSec) * time.Second
+
+	// --- 第 4 课：网关密钥必填（缺失即启动失败，design.md D3 / spec 配置与密钥边界） ---
+	if c.EmbeddingBaseURL, err = required("EMBEDDING_BASE_URL"); err != nil {
+		return nil, err
+	}
+	if c.EmbeddingAPIKey, err = required("EMBEDDING_API_KEY"); err != nil {
+		return nil, err
+	}
+	if c.ChatBaseURL, err = required("CHAT_BASE_URL"); err != nil {
+		return nil, err
+	}
+	if c.ChatAPIKey, err = required("CHAT_API_KEY"); err != nil {
+		return nil, err
+	}
+	c.EmbeddingModel = os.Getenv("EMBEDDING_MODEL")
+	if c.EmbeddingModel == "" {
+		c.EmbeddingModel = "course-embedding"
+	}
+	c.ChatModel = os.Getenv("CHAT_MODEL")
+	if c.ChatModel == "" {
+		c.ChatModel = "course-chat"
+	}
+	c.QdrantURL = os.Getenv("QDRANT_URL")
+	if c.QdrantURL == "" {
+		c.QdrantURL = "http://qdrant:6333"
+	}
+	dim, err := getenvInt64("EMBEDDING_DIM", 2048)
+	if err != nil {
+		return nil, err
+	}
+	c.EmbeddingDim = int(dim)
+	chunkMax, err := getenvInt64("CHUNK_AUTO_MAX_CHARS", 800)
+	if err != nil {
+		return nil, err
+	}
+	c.ChunkAutoMaxChars = int(chunkMax)
+	overlap, err := getenvInt64("CHUNK_AUTO_OVERLAP", 80)
+	if err != nil {
+		return nil, err
+	}
+	c.ChunkAutoOverlap = int(overlap)
+	cutoff, err := getenvFloat("VECTOR_SCORE_THRESHOLD", 0.35)
+	if err != nil {
+		return nil, err
+	}
+	c.VectorScoreCutoff = cutoff
+	rrfK, err := getenvInt64("RRF_K", 60)
+	if err != nil {
+		return nil, err
+	}
+	c.RRFK = int(rrfK)
+	askTopK, err := getenvInt64("ASK_TOP_K", 4)
+	if err != nil {
+		return nil, err
+	}
+	c.AskTopK = int(askTopK)
 
 	return c, nil
 }

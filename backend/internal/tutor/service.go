@@ -101,6 +101,7 @@ func resourceError(w http.ResponseWriter, e error) {
 		dbFail(w)
 	}
 }
+
 // @api {"method":"GET","path":"/api/agents","summary":"列出本班智能体；学生只见启用者","auth":"login","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Agent"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Agents(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
@@ -141,6 +142,7 @@ func (s *Service) Agents(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, out)
 }
+
 // @api {"method":"GET","path":"/api/agents/{id}","summary":"读取本班智能体","auth":"login","status":200,"request":null,"response":{"$ref":"#/components/schemas/Agent"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Agent(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
@@ -151,6 +153,7 @@ func (s *Service) Agent(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, a)
 }
+
 // @api {"method":"POST","path":"/api/agents","summary":"创建智能体并原子绑定本班资源","auth":"teacher","status":201,"request":{"$ref":"#/components/schemas/AgentInput"},"response":{"$ref":"#/components/schemas/Agent"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 // @api {"method":"PUT","path":"/api/agents/{id}","summary":"修改提示词、启停与绑定；下一轮生效","auth":"teacher","status":200,"request":{"$ref":"#/components/schemas/AgentInput"},"response":{"$ref":"#/components/schemas/Agent"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) SaveAgent(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +269,7 @@ func (s *Service) skills(ctx context.Context, classID, agentID int64) ([]Skill, 
 	}
 	return out, rows.Err()
 }
+
 // @api {"method":"GET","path":"/api/skills","summary":"列出本班技能","auth":"login","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Skill"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Skills(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
@@ -276,6 +280,7 @@ func (s *Service) Skills(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, v)
 }
+
 // @api {"method":"GET","path":"/api/skills/{id}","summary":"读取本班技能文件","auth":"login","status":200,"request":null,"response":{"$ref":"#/components/schemas/Skill"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Skill(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
@@ -292,6 +297,7 @@ func (s *Service) Skill(w http.ResponseWriter, r *http.Request) {
 	}
 	missing(w)
 }
+
 // @api {"method":"POST","path":"/api/skills","summary":"解析技能文件并创建","auth":"teacher","status":201,"request":{"$ref":"#/components/schemas/SkillInput"},"response":{"$ref":"#/components/schemas/Skill"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 // @api {"method":"PUT","path":"/api/skills/{id}","summary":"修改技能文件（启用填是或否）","auth":"teacher","status":200,"request":{"$ref":"#/components/schemas/SkillInput"},"response":{"$ref":"#/components/schemas/Skill"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 // @api {"method":"DELETE","path":"/api/skills/{id}","summary":"删除技能并解除绑定","auth":"teacher","status":204,"request":null,"response":null,"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
@@ -372,6 +378,7 @@ func (s *Service) conversation(ctx context.Context, id int64, u auth.User) (Conv
 	e := s.DB.QueryRowContext(ctx, `SELECT c.id,c.agent_id,a.name,c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.id=? AND c.user_id=? AND c.class_id=? AND a.class_id=?`, id, u.ID, u.ClassID, u.ClassID).Scan(&c.ID, &c.AgentID, &c.AgentName, &c.Title, &c.Created, &c.Updated)
 	return c, e
 }
+
 // @api {"method":"GET","path":"/api/conversations","summary":"列出本人本班会话","auth":"login","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Conversation"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
@@ -396,6 +403,7 @@ func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, 200, out)
 }
+
 // @api {"method":"POST","path":"/api/conversations","summary":"选择本班启用智能体创建私人会话","auth":"login","status":201,"request":{"type":"object","properties":{"agent_id":{"type":"integer","format":"int64"}},"required":["agent_id"]},"response":{"$ref":"#/components/schemas/Conversation"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
@@ -464,6 +472,7 @@ func (s *Service) messages(ctx context.Context, id int64, recent bool) ([]Messag
 	}
 	return out, rows.Err()
 }
+
 // @api {"method":"GET","path":"/api/conversations/{id}","summary":"读取本人会话和全部消息","auth":"login","status":200,"request":null,"response":{"type":"object","properties":{"conversation":{"$ref":"#/components/schemas/Conversation"},"messages":{"type":"array","items":{"$ref":"#/components/schemas/Message"}}}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Conversation(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())

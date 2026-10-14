@@ -1,0 +1,292 @@
+{
+  "User": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "username": {
+        "type": "string"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "teacher",
+          "student"
+        ]
+      },
+      "class_id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "class_name": {
+        "type": "string"
+      }
+    }
+  },
+  "AgentInput": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "prompt": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "skill_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "material_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    },
+    "required": [
+      "name",
+      "enabled"
+    ]
+  },
+  "Agent": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "prompt": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "skill_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "format": "int64"
+        }
+      },
+      "material_ids": {
+        "type": "array",
+        "items": {
+          "type": "integer",
+          "format": "int64"
+        }
+      }
+    }
+  },
+  "SkillInput": {
+    "type": "object",
+    "properties": {
+      "source_text": {
+        "type": "string",
+        "maxLength": 8000
+      }
+    },
+    "required": [
+      "source_text"
+    ]
+  },
+  "Skill": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "name": {
+        "type": "string"
+      },
+      "trigger_text": {
+        "type": "string"
+      },
+      "subject_text": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "tools": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "source_text": {
+        "type": "string"
+      }
+    }
+  },
+  "Conversation": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "agent_id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "agent_name": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "string"
+      },
+      "updated_at": {
+        "type": "string"
+      }
+    }
+  },
+  "Citation": {
+    "type": "object",
+    "properties": {
+      "index": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "material_id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "material_title": {
+        "type": "string"
+      },
+      "chunk_index": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "char_start": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "char_end": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "excerpt": {
+        "type": "string"
+      }
+    }
+  },
+  "Message": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "role": {
+        "type": "string",
+        "enum": [
+          "user",
+          "assistant"
+        ]
+      },
+      "content": {
+        "type": "string"
+      },
+      "citations": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/Citation"
+        }
+      },
+      "skill_name": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string",
+        "enum": [
+          "complete",
+          "partial"
+        ]
+      }
+    }
+  },
+  "Material": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "title": {
+        "type": "string"
+      },
+      "class_name": {
+        "type": "string"
+      },
+      "created_at": {
+        "type": "string"
+      }
+    }
+  },
+  "Hit": {
+    "type": "object",
+    "properties": {
+      "material_id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "material_title": {
+        "type": "string"
+      },
+      "chunk_id": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "chunk_index": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "char_start": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "char_end": {
+        "type": "integer",
+        "format": "int64"
+      },
+      "excerpt": {
+        "type": "string"
+      },
+      "keyword_score": {
+        "type": "number"
+      },
+      "vector_score": {
+        "type": "number"
+      },
+      "rrf_score": {
+        "type": "number"
+      }
+    }
+  }
+}

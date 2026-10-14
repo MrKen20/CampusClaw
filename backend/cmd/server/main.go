@@ -3,13 +3,18 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"time"
 
+	"campusclaw/backend/internal/apidocs"
 	"campusclaw/backend/internal/auth"
 	"campusclaw/backend/internal/config"
 	"campusclaw/backend/internal/db"
 	"campusclaw/backend/internal/materials"
+	"campusclaw/backend/internal/retrieval"
+	"campusclaw/backend/internal/tutor"
 )
 
 func main() {
@@ -31,8 +36,35 @@ func main() {
 		log.Fatalf("种子失败：%v", err)
 	}
 
+	if err := tutor.Migrate(d); err != nil {
+		log.Fatalf("助手建表失败：%v", err)
+	}
+	if err := tutor.Seed(d); err != nil {
+		log.Fatalf("助手种子失败：%v", err)
+	}
+
 	authSvc := auth.NewService(d, cfg)
 	matSvc := materials.NewService(d, cfg)
+
+	// 第 4 课：检索链路（嵌入/对话网关 + Qdrant）。
+	// Qdrant 集合创建失败不阻断启动——keyword 模式仍可服务，vector/hybrid 按 D8 返回 503。
+	embed := &retrieval.EmbeddingClient{BaseURL: cfg.EmbeddingBaseURL, APIKey: cfg.EmbeddingAPIKey, Model: cfg.EmbeddingModel, Dim: cfg.EmbeddingDim}
+	chat := &retrieval.ChatClient{BaseURL: cfg.ChatBaseURL, APIKey: cfg.ChatAPIKey, Model: cfg.ChatModel}
+	qdr := retrieval.NewQdrantClient(cfg)
+	qdrCtx, qdrCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := qdr.EnsureCollection(qdrCtx); err != nil {
+		log.Printf("警告：Qdrant 集合创建失败（keyword 模式仍可用，vector/hybrid 将返回 503）：%v", err)
+		qdr.ResetEnsure() // 允许后续请求时再试
+	}
+	qdrCancel()
+	retrievalSvc := retrieval.NewService(d, cfg, embed, qdr, chat)
+	matSvc.SetIndexer(retrievalSvc.Indexer)
+	// 种子材料与既有材料按 auto 策略补齐索引（嵌入失败标 failed，绝不阻断启动）。
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		retrievalSvc.Indexer.BackfillMissing(ctx)
+	}()
 
 	// dbGuard：数据库不可用时业务接口返回 503，不得误判为会话失效 401（design.md D9）。
 	dbGuard := func(next http.HandlerFunc) http.HandlerFunc {
@@ -48,7 +80,9 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	apidocs.Mount(mux)
 	// /health 只做进程存活判定，不查数据库（design.md D9）。
+	// @api {"method":"GET","path":"/health","summary":"存活检查，不查数据库","auth":"public","status":200,"response":{"type":"object","properties":{"status":{"type":"string"}}},"errors":{}}
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
@@ -62,6 +96,26 @@ func main() {
 	mux.HandleFunc("GET /api/materials/{id}", dbGuard(authSvc.Middleware(matSvc.Detail)))
 	mux.HandleFunc("GET /api/materials/{id}/file", dbGuard(authSvc.Middleware(matSvc.File)))
 	mux.HandleFunc("POST /api/materials", dbGuard(authSvc.Middleware(auth.RequireTeacher(matSvc.Upload))))
+
+	// 第 4 课：检索、问答与索引重建（均在 dbGuard 与会话中间件之后，design.md 接口一览）
+	mux.HandleFunc("POST /api/search", dbGuard(authSvc.Middleware(retrievalSvc.Search)))
+	mux.HandleFunc("POST /api/ask", dbGuard(authSvc.Middleware(retrievalSvc.Ask)))
+	mux.HandleFunc("POST /api/materials/{id}/reindex", dbGuard(authSvc.Middleware(auth.RequireTeacher(retrievalSvc.Reindex))))
+
+	tutorSvc := tutor.NewService(d, retrievalSvc.Searcher, chat)
+	mux.HandleFunc("GET /api/agents", dbGuard(authSvc.Middleware(tutorSvc.Agents)))
+	mux.HandleFunc("GET /api/agents/{id}", dbGuard(authSvc.Middleware(tutorSvc.Agent)))
+	mux.HandleFunc("POST /api/agents", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
+	mux.HandleFunc("PUT /api/agents/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
+	mux.HandleFunc("GET /api/skills", dbGuard(authSvc.Middleware(tutorSvc.Skills)))
+	mux.HandleFunc("GET /api/skills/{id}", dbGuard(authSvc.Middleware(tutorSvc.Skill)))
+	mux.HandleFunc("POST /api/skills", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
+	mux.HandleFunc("PUT /api/skills/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
+	mux.HandleFunc("DELETE /api/skills/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
+	mux.HandleFunc("GET /api/conversations", dbGuard(authSvc.Middleware(tutorSvc.Conversations)))
+	mux.HandleFunc("POST /api/conversations", dbGuard(authSvc.Middleware(tutorSvc.CreateConversation)))
+	mux.HandleFunc("GET /api/conversations/{id}", dbGuard(authSvc.Middleware(tutorSvc.Conversation)))
+	mux.HandleFunc("POST /api/conversations/{id}/messages", dbGuard(authSvc.Middleware(tutorSvc.SendMessage)))
 
 	log.Printf("CampusClaw api 监听 :%s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, mux))

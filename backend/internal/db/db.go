@@ -94,6 +94,24 @@ func Migrate(d *sql.DB) error {
 			INDEX idx_knowledge_material (material_id),
 			FOREIGN KEY (class_id) REFERENCES classes(id)
 		)`,
+		// 第 4 课：切片表。正文与字符区间留 MySQL；向量主键与本表 id 一致（design.md D1）。
+		// 关键字检索依赖 ngram 全文索引（中文必须 ngram，token 长度 2）。
+		`CREATE TABLE IF NOT EXISTS knowledge_chunks (
+			id BIGINT AUTO_INCREMENT PRIMARY KEY,
+			knowledge_entry_id BIGINT NOT NULL,
+			material_id BIGINT NOT NULL,
+			class_id BIGINT NOT NULL,
+			chunk_index INT NOT NULL,
+			chunk_text MEDIUMTEXT NOT NULL,
+			char_start INT NOT NULL,
+			char_end INT NOT NULL,
+			index_status VARCHAR(16) NOT NULL DEFAULT 'pending',
+			strategy VARCHAR(16) NOT NULL DEFAULT 'auto',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			INDEX idx_chunks_class (class_id),
+			INDEX idx_chunks_material (material_id),
+			FULLTEXT KEY ft_chunk_text (chunk_text) WITH PARSER ngram
+		)`,
 		`CREATE TABLE IF NOT EXISTS assignments (
 			id BIGINT AUTO_INCREMENT PRIMARY KEY,
 			class_id BIGINT NOT NULL,

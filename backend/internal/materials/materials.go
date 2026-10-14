@@ -21,18 +21,26 @@ import (
 	"time"
 
 	"campusclaw/backend/internal/auth"
+	"campusclaw/backend/internal/chunking"
 	"campusclaw/backend/internal/config"
 	"campusclaw/backend/internal/knowledge"
+	"campusclaw/backend/internal/retrieval"
 )
 
 // Service 持有材料相关依赖。
 type Service struct {
-	DB  *sql.DB
-	Cfg *config.Config
+	DB      *sql.DB
+	Cfg     *config.Config
+	indexer *retrieval.Indexer // 上传成功后追加切片索引管线（第 4 课）
 }
 
 func NewService(d *sql.DB, cfg *config.Config) *Service {
 	return &Service{DB: d, Cfg: cfg}
+}
+
+// SetIndexer 注入索引器（main 组装依赖后调用）。
+func (s *Service) SetIndexer(ix *retrieval.Indexer) {
+	s.indexer = ix
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -55,6 +63,7 @@ type Summary struct {
 }
 
 // List 处理 GET /api/materials：只按会话班级过滤，支持本班关键词搜索。
+// @api {"method":"GET","path":"/api/materials","summary":"列出并搜索本班材料","auth":"login","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Material"}},"errors":{"401":"未登录","503":"服务暂时不可用"},"parameters":[{"name":"q","in":"query","schema":{"type":"string"}}]}
 func (s *Service) List(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -147,6 +156,7 @@ func (s *Service) fetchAuthorized(w http.ResponseWriter, r *http.Request) *mater
 }
 
 // Detail 处理 GET /api/materials/{id}：返回元数据与知识库正文，不含磁盘路径。
+// @api {"method":"GET","path":"/api/materials/{id}","summary":"读取材料正文","auth":"login","status":200,"request":null,"response":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"title":{"type":"string"},"body":{"type":"string"},"class_name":{"type":"string"},"created_at":{"type":"string"}}},"errors":{"401":"未登录","404":"材料不存在（含跨班）","503":"服务暂时不可用"}}
 func (s *Service) Detail(w http.ResponseWriter, r *http.Request) {
 	m := s.fetchAuthorized(w, r)
 	if m == nil {
@@ -169,6 +179,7 @@ func (s *Service) Detail(w http.ResponseWriter, r *http.Request) {
 }
 
 // File 处理 GET /api/materials/{id}/file：鉴权后由 Go 读盘回传，不静态暴露上传目录。
+// @api {"method":"GET","path":"/api/materials/{id}/file","summary":"鉴权下载原文件","auth":"login","status":200,"request":null,"response":{"type":"string"},"errors":{"401":"未登录","404":"材料不存在或文件不可读（含跨班）","503":"服务暂时不可用"},"media":"text/plain"}
 func (s *Service) File(w http.ResponseWriter, r *http.Request) {
 	m := s.fetchAuthorized(w, r)
 	if m == nil {
@@ -193,6 +204,7 @@ func (s *Service) File(w http.ResponseWriter, r *http.Request) {
 var allowedExt = map[string]bool{".txt": true, ".md": true}
 
 // Upload 处理 POST /api/materials（RequireTeacher 之后）。
+// @api {"method":"POST","path":"/api/materials","summary":"教师上传非空UTF-8 .txt/.md","auth":"teacher","status":201,"request":{"type":"object","properties":{"file":{"type":"string","format":"binary"},"title":{"type":"string"}},"required":["file"]},"response":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"title":{"type":"string"}}},"errors":{"400":"非法扩展名/编码/内容","401":"未登录","403":"仅教师可写","413":"超过上传上限","500":"入库失败","503":"服务暂时不可用"},"requestMedia":"multipart/form-data"}
 func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 
@@ -281,9 +293,16 @@ func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "入库失败"})
 		return
 	}
-	if _, err := tx.Exec(`INSERT INTO knowledge_entries (material_id, class_id, body_text) VALUES (?, ?, ?)`,
-		mid, u.ClassID, body); err != nil {
+	res2, err := tx.Exec(`INSERT INTO knowledge_entries (material_id, class_id, body_text) VALUES (?, ?, ?)`,
+		mid, u.ClassID, body)
+	if err != nil {
 		log.Printf("写入知识库失败：%v", err)
+		cleanup()
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "入库失败"})
+		return
+	}
+	entryID, err := res2.LastInsertId()
+	if err != nil {
 		cleanup()
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "入库失败"})
 		return
@@ -293,6 +312,13 @@ func (s *Service) Upload(w http.ResponseWriter, r *http.Request) {
 		cleanup()
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "入库失败"})
 		return
+	}
+	// 第 4 课：上传成功后按 auto 策略切分、嵌入、写入 Qdrant（spec 切片入库管线）。
+	// 嵌入失败不丢原文——材料记录保留，对应切片标 failed，上传仍返回成功。
+	if s.indexer != nil {
+		if _, err := s.indexer.IndexMaterial(r.Context(), mid, entryID, u.ClassID, body, "auto", chunking.Options{}); err != nil {
+			log.Printf("上传后索引失败（material %d）：%v", mid, err)
+		}
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"id": mid, "title": title})
 }
