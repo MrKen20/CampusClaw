@@ -12,3 +12,8 @@ backend/campusclaw-api
 
 # 系统文件
 .DS_Store
+
+# Local API test evidence
+apitest/reports/
+__pycache__/
+*.pyc

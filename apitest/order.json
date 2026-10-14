@@ -1,0 +1,20 @@
+[
+  "api/login/POST.py",
+  "api/agents/GET.py",
+  "api/skills/GET.py",
+  "api/skills/POST.py",
+  "api/skills/{id}/GET.py",
+  "api/agents/POST.py",
+  "api/agents/{id}/PUT.py",
+  "api/agents/{id}/GET.py",
+  "api/conversations/POST.py",
+  "api/conversations/GET.py",
+  "api/conversations/{id}/GET.py",
+  "api/search/POST.py",
+  "api/ask/POST.py",
+  "api/conversations/{id}/messages/POST.py",
+  "api/skills/{id}/PUT.py",
+  "api/skills/{id}/DELETE.py",
+  "openapi.json/GET.py",
+  "api/logout/POST.py"
+]

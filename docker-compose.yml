@@ -31,11 +31,33 @@ services:
       LOGIN_FAIL_WINDOW_SECONDS: ${LOGIN_FAIL_WINDOW_SECONDS:-300}
       UPLOAD_DIR: /app/uploads
       API_PORT: "8081"
+      # 第 4 课：嵌入/对话网关与 Qdrant（密钥只经环境变量注入，缺失即启动失败）
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:?请在 .env 中填写 EMBEDDING_BASE_URL}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:?请在 .env 中填写 EMBEDDING_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-course-embedding}
+      EMBEDDING_DIM: ${EMBEDDING_DIM:-2048}
+      CHAT_BASE_URL: ${CHAT_BASE_URL:?请在 .env 中填写 CHAT_BASE_URL}
+      CHAT_API_KEY: ${CHAT_API_KEY:?请在 .env 中填写 CHAT_API_KEY}
+      CHAT_MODEL: ${CHAT_MODEL:-course-chat}
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      CHUNK_AUTO_MAX_CHARS: ${CHUNK_AUTO_MAX_CHARS:-800}
+      CHUNK_AUTO_OVERLAP: ${CHUNK_AUTO_OVERLAP:-80}
+      VECTOR_SCORE_THRESHOLD: ${VECTOR_SCORE_THRESHOLD:-0.25}
+      RRF_K: ${RRF_K:-60}
+      ASK_TOP_K: ${ASK_TOP_K:-4}
     volumes:
       - uploads:/app/uploads
     depends_on:
       - db
+      - qdrant
     # 不单独暴露端口：只经 web 反代访问；应用自身会重试等待 db 就绪（design.md D4）
+    restart: unless-stopped
+
+  # Qdrant 向量库：仅 Compose 内部网络可达，不映射宿主端口（design.md D4）
+  qdrant:
+    image: qdrant/qdrant:v1.11.3
+    volumes:
+      - qdrant_data:/qdrant/storage
     restart: unless-stopped
 
   web:
@@ -51,3 +73,4 @@ services:
 volumes:
   dbdata:
   uploads:
+  qdrant_data:

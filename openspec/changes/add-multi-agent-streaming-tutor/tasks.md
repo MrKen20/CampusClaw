@@ -10,6 +10,6 @@
 ## 5. 前端
 - [x] 5.1 教师配置/技能文件、多个独立流式会话面板、停止与恢复、Nginx无缓冲；verify: TypeScript构建、SSE解析测试、浏览器两智能体并行/刷新/引用走查。
 ## 6. 发布验收
-- [ ] 6.1 apitest按URL脚本与HTML报告、README；verify: python3 apitest/run_all.py全通过，内容/数据库核对，报告Git忽略。
-- [ ] 6.2 Compose发布与真实网关角色/技能启停/并流验收、密钥边界；verify: 四容器running，真实两流meta/delta/done，引用来源正确，前端与Git无密钥，证据记入change verification.md。
+- [x] 6.1 apitest按URL脚本与HTML报告、README；verify: python3 apitest/run_all.py全通过，内容/数据库核对，报告Git忽略。
+- [x] 6.2 Compose发布与真实网关角色/技能启停/并流验收、密钥边界；verify: 四容器running，真实两流meta/delta/done，引用来源正确，前端与Git无密钥，证据记入change verification.md。
 - [ ] 6.3 同伴交叉验证；verify: 真实同伴完成归属、智能体隔离、班级边界、技能开关四项并留下记录（AI自动测试不代替）。
