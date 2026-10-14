@@ -379,7 +379,7 @@ func (s *Service) conversation(ctx context.Context, id int64, u auth.User) (Conv
 	return c, e
 }
 
-// @api {"method":"GET","path":"/api/conversations","summary":"列出本人本班会话","auth":"login","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Conversation"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
+// @api {"method":"GET","path":"/api/conversations","summary":"列出本人本班会话","auth":"student","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Conversation"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅学生可使用智能体会话","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 	rows, e := s.DB.QueryContext(r.Context(), `SELECT c.id,c.agent_id,a.name,c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.user_id=? AND c.class_id=? AND a.class_id=? ORDER BY c.updated_at DESC,c.id DESC`, u.ID, u.ClassID, u.ClassID)
@@ -404,7 +404,7 @@ func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 200, out)
 }
 
-// @api {"method":"POST","path":"/api/conversations","summary":"选择本班启用智能体创建私人会话","auth":"login","status":201,"request":{"type":"object","properties":{"agent_id":{"type":"integer","format":"int64"}},"required":["agent_id"]},"response":{"$ref":"#/components/schemas/Conversation"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
+// @api {"method":"POST","path":"/api/conversations","summary":"选择本班启用智能体创建私人会话","auth":"student","status":201,"request":{"type":"object","properties":{"agent_id":{"type":"integer","format":"int64"}},"required":["agent_id"]},"response":{"$ref":"#/components/schemas/Conversation"},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅学生可使用智能体会话","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 	var in struct {
@@ -473,7 +473,7 @@ func (s *Service) messages(ctx context.Context, id int64, recent bool) ([]Messag
 	return out, rows.Err()
 }
 
-// @api {"method":"GET","path":"/api/conversations/{id}","summary":"读取本人会话和全部消息","auth":"login","status":200,"request":null,"response":{"type":"object","properties":{"conversation":{"$ref":"#/components/schemas/Conversation"},"messages":{"type":"array","items":{"$ref":"#/components/schemas/Message"}}}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
+// @api {"method":"GET","path":"/api/conversations/{id}","summary":"读取本人会话和全部消息","auth":"student","status":200,"request":null,"response":{"type":"object","properties":{"conversation":{"$ref":"#/components/schemas/Conversation"},"messages":{"type":"array","items":{"$ref":"#/components/schemas/Message"}}}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅学生可使用智能体会话","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Conversation(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
 	c, e := s.conversation(r.Context(), pathID(r), u)

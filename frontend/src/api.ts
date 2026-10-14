@@ -89,13 +89,15 @@ function handleUnauthorized() {
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, { ...init, headers: { ...authHeaders(), ...init?.headers } })
-  if (res.status === 401) {
+  if (res.status === 401 && path !== '/api/login') {
     handleUnauthorized()
     throw new Error('未登录')
   }
   const data = await res.json().catch(() => ({}))
   if (!res.ok) {
-    const message = (data as { error?: string }).error ?? `请求失败（${res.status}）`
+    const message = path === '/api/login' && res.status === 401
+      ? '账号或密码错误'
+      : (data as { error?: string }).error ?? `请求失败（${res.status}）`
     const err = new Error(message) as Error & { status?: number }
     err.status = res.status
     throw err

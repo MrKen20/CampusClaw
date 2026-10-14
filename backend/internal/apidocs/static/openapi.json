@@ -1862,7 +1862,7 @@
     "/api/conversations": {
       "get": {
         "summary": "列出本人本班会话",
-        "description": "",
+        "description": " 仅学生可使用。",
         "operationId": "get_api_conversations",
         "tags": [
           "conversations"
@@ -1913,14 +1913,14 @@
             }
           },
           "403": {
-            "description": "仅教师可写",
+            "description": "仅学生可使用智能体会话",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "error": "仅教师可写"
+                  "error": "仅学生可使用智能体会话"
                 }
               }
             }
@@ -1955,7 +1955,7 @@
       },
       "post": {
         "summary": "选择本班启用智能体创建私人会话",
-        "description": "",
+        "description": " 仅学生可使用。",
         "operationId": "post_api_conversations",
         "tags": [
           "conversations"
@@ -2003,14 +2003,14 @@
             }
           },
           "403": {
-            "description": "仅教师可写",
+            "description": "仅学生可使用智能体会话",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "error": "仅教师可写"
+                  "error": "仅学生可使用智能体会话"
                 }
               }
             }
@@ -2066,7 +2066,7 @@
     "/api/conversations/{id}": {
       "get": {
         "summary": "读取本人会话和全部消息",
-        "description": "",
+        "description": " 仅学生可使用。",
         "operationId": "get_api_conversations_id",
         "tags": [
           "conversations"
@@ -2125,14 +2125,14 @@
             }
           },
           "403": {
-            "description": "仅教师可写",
+            "description": "仅学生可使用智能体会话",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "error": "仅教师可写"
+                  "error": "仅学生可使用智能体会话"
                 }
               }
             }
@@ -2180,7 +2180,7 @@
     "/api/conversations/{id}/messages": {
       "post": {
         "summary": "在锁定智能体的会话中流式提问",
-        "description": "真实SSE：meta先带skill/citations；delta.text是新增片段；助手消息落库后done.message_id；流后失败error，已发片段存为partial。不同会话可并行，同一会话并发409。正文agent_id/history/class_id被忽略。",
+        "description": "真实SSE：meta先带skill/citations；delta.text是新增片段；助手消息落库后done.message_id；流后失败error，已发片段存为partial。不同会话可并行，同一会话并发409。正文agent_id/history/class_id被忽略。 仅学生可使用。",
         "operationId": "post_api_conversations_id_messages",
         "tags": [
           "conversations"
@@ -2229,14 +2229,14 @@
             }
           },
           "403": {
-            "description": "仅教师可写",
+            "description": "仅学生可使用智能体会话",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "error": "仅教师可写"
+                  "error": "仅学生可使用智能体会话"
                 }
               }
             }
