@@ -21,7 +21,7 @@ interface Props {
   onJumpConsumed: () => void
 }
 
-export default function MaterialsPage({ me, theme, onToggleTheme, onLogout, onOpenAsk, jumpToDetail, onJumpConsumed }: Props) {
+export default function MaterialsPage({ me, jumpToDetail, onJumpConsumed }: Props) {
   const [items, setItems] = useState<MaterialSummary[]>([])
   const [query, setQuery] = useState('')
   const [view, setView] = useState<'list' | 'grid'>('list')
@@ -106,18 +106,6 @@ export default function MaterialsPage({ me, theme, onToggleTheme, onLogout, onOp
 
   return (
     <>
-      <header className="topbar">
-        <span className="logo">CampusClaw</span>
-        <span className="who">
-          {me.username} · {me.role === 'teacher' ? '教师' : '学生'} · {me.class_name}
-        </span>
-        <span className="spacer" />
-        <button onClick={onOpenAsk}>知识问答</button>
-        <button onClick={() => setPaletteOpen(true)}>⌘K 搜索</button>
-        <button onClick={onToggleTheme}>{theme === 'light' ? '深色' : '浅色'}</button>
-        <button onClick={onLogout}>登出</button>
-      </header>
-
       <main className="container">
         <div className="toolbar">
           <input

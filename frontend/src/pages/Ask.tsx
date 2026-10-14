@@ -30,7 +30,7 @@ const MODE_LABELS: Record<SearchMode, string> = {
   hybrid: '混合（默认）',
 }
 
-export default function AskPage({ me, theme, onToggleTheme, onLogout, onOpenMaterials, onOpenMaterial }: Props) {
+export default function AskPage({ me, onOpenMaterial }: Props) {
   const [tab, setTab] = useState<'search' | 'qa'>('qa')
   const toast = useToast()
 
@@ -86,16 +86,7 @@ export default function AskPage({ me, theme, onToggleTheme, onLogout, onOpenMate
 
   return (
     <>
-      <header className="topbar">
-        <span className="logo">CampusClaw</span>
-        <span className="who">
-          {me.username} · {me.role === 'teacher' ? '教师' : '学生'} · {me.class_name}
-        </span>
-        <span className="spacer" />
-        <button onClick={onToggleTheme}>{theme === 'light' ? '深色' : '浅色'}</button>
-        <button onClick={onOpenMaterials}>材料</button>
-        <button className="primary" onClick={onLogout}>登出</button>
-      </header>
+
 
       <main className="container">
         <h1 className="ask-title">{me.class_name} · 知识问答</h1>
@@ -115,7 +106,7 @@ export default function AskPage({ me, theme, onToggleTheme, onLogout, onOpenMate
         {tab === 'search' && (
           <>
             <p className="hint">
-              在本班材料切片中检索：关键字模式只看词是否出现；向量模式看语义是否接近（低于 0.35
+              在本班材料切片中检索：关键字模式只看词是否出现；向量模式看语义是否接近（低于配置阈值
               的候选被丢弃）；混合模式为两路按名次 RRF 融合（默认）。
             </p>
             <form className="toolbar" onSubmit={doSearch}>
