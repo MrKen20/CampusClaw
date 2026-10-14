@@ -287,9 +287,16 @@ func (rl *rateLimiter) reset(key string) {
 
 // RequireStudent keeps the teacher workspace focused on configuration.
 func RequireStudent(next http.HandlerFunc) http.HandlerFunc {
- return func(w http.ResponseWriter,r *http.Request) {
-  u,ok:=FromContext(r.Context());if !ok {writeJSON(w,401,map[string]string{"error":"未登录"});return}
-  if u.Role!="student" {writeJSON(w,403,map[string]string{"error":"仅学生可使用智能体会话"});return}
-  next(w,r)
- }
+	return func(w http.ResponseWriter, r *http.Request) {
+		u, ok := FromContext(r.Context())
+		if !ok {
+			writeJSON(w, 401, map[string]string{"error": "未登录"})
+			return
+		}
+		if u.Role != "student" {
+			writeJSON(w, 403, map[string]string{"error": "仅学生可使用智能体会话"})
+			return
+		}
+		next(w, r)
+	}
 }

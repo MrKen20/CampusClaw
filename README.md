@@ -78,9 +78,9 @@ docker compose ps
 
 ## 第 5 课：智能体与并行流式会话
 
-登录后点击顶部「智能体对话」。教师进入「智能体与技能配置」，维护本班智能体的名称、角色提示词、启用状态、绑定技能和绑定材料。技能可直接编辑，或导入 `.md` / `.txt`：名称、适用条件、启用必填，空一行后写引导规程；工具仅允许 `knowledge_search`。启用填写「是」或「否」，名称含「解题引导」的技能要求只引导、不直接给最终答案。
+教师登录后进入侧栏「智能体配置」和「技能管理」，维护本班智能体的名称、角色提示词、启用状态、绑定技能和绑定材料。技能新建/上传使用独立编辑窗口，已有卡片负责编辑、启停与删除，删除前需确认。技能文件中名称、适用条件、启用必填，空一行后写引导规程；工具仅允许 `knowledge_search`。启用填写「是」或「否」，名称含「解题引导」的技能要求只引导、不直接给最终答案。教师不提供智能体聊天功能。
 
-学生选择启用的智能体，点击「新开对话」；可以继续选择另一个智能体并新开对话，多个面板各自流式生成、各自停止。收起面板不删除历史，也不停止其他会话；点击会话记录可重新打开。刷新页面后从服务器恢复会话列表，点击记录恢复消息。每个会话创建时锁定智能体，教师修改它的配置或绑定从下一轮生效；智能体停用只阻止新建会话，不阻止原会话继续。
+学生登录后默认进入「智能体」，选择启用的智能体，点击「新对话」；可以继续选择另一个智能体并新开对话。会话支持标签切换、并排查看、Enter发送和Shift+Enter换行，每个面板各自流式生成、各自停止。收起面板不删除历史，切换到资料库时仍继续生成；点击会话记录可重新打开。刷新页面后从服务器恢复会话列表，点击记录恢复消息。每个会话创建时锁定智能体，教师修改它的配置或绑定从下一轮生效；智能体停用只阻止新建会话，不阻止原会话继续。
 
 每轮只在智能体绑定的材料里检索，且只在绑定并启用的技能里选择至多一项。编号资料放在用户消息中，角色、技能与固定边界放在系统消息中。历史只取最后六条，每条最多500字。引用先随 `meta` 到达，`delta` 是网关生成的真实增量，助手消息保存后返回 `done`；中途失败或停止保留已生成正文并标为 `partial`。同一会话并发请求返回409，不同会话可同时生成。
 
@@ -88,7 +88,7 @@ docker compose ps
 
 ### 接口文档
 
-打开 <http://localhost:8080/swagger/>，文档 JSON 为 <http://localhost:8080/openapi.json>。通过 `/api/login` 获取 token，在 Swagger 的 Authorize 中只填写 token（不加 `Bearer `），即可试调受保护接口。Swagger 静态资源随 API 镜像打包，不依赖 CDN；第三方资源版本为 swagger-ui-dist 5.33.2，许可证随资源保留。
+登录页底部提供 Swagger 接口文档入口，登录后的工作台不显示此入口。打开 <http://localhost:8080/swagger/>，文档 JSON 为 <http://localhost:8080/openapi.json>。通过 `/api/login` 获取 token，在 Swagger 的 Authorize 中只填写 token（不加 `Bearer `），即可试调受保护接口。Swagger 静态资源随 API 镜像打包，不依赖 CDN；第三方资源版本为 swagger-ui-dist 5.33.2，许可证随资源保留。
 
 文档源为处理函数旁的 `// @api {...}` 注解与 `scripts/api_schemas.json`。修改接口后运行：
 
@@ -97,7 +97,11 @@ python3 scripts/generate_openapi.py
 python3 scripts/generate_openapi.py --check
 ```
 
-新增接口：`GET/POST /api/agents`、`GET/PUT /api/agents/{id}`、`GET/POST /api/skills`、`GET/PUT/DELETE /api/skills/{id}`、`GET/POST /api/conversations`、`GET /api/conversations/{id}`、`POST /api/conversations/{id}/messages`。提示词通过智能体的 `prompt` 字段设置，不使用全班共享的旧 `/api/prompt`。对象跨班/不存在同形404，教师写操作学生403；会话额外只允许本人访问。
+新增接口：`GET/POST /api/agents`、`GET/PUT /api/agents/{id}`、`GET/POST /api/skills`、`GET/PUT/DELETE /api/skills/{id}`、`GET/POST /api/conversations`、`GET /api/conversations/{id}`、`POST /api/conversations/{id}/messages`。提示词通过智能体的 `prompt` 字段设置，不使用全班共享的旧 `/api/prompt`。对象跨班/不存在同形404，教师写操作学生403；会话接口仅允许学生且只允许本人访问，教师访问四个会话接口均返回403。
+
+### 分类资料阅读
+
+「资料库」采用分类目录与正文阅读布局，保留搜索、⌘/Ctrl+K、网格浏览和鉴权下载。分类仅依据标题关键词推导，无法识别的归「其他」，不代表数据库已录入正式学科；本次不含个人笔记。正文安全渲染，搜索和详情切换忽略过期响应。前端回归可运行 `node --experimental-strip-types frontend/tests/auth.test.mjs` 与 `node --experimental-strip-types frontend/tests/library.test.mjs`。
 
 ### 接口测试
 
