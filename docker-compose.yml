@@ -17,6 +17,12 @@ services:
   api:
     build: ./backend
     environment:
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?请填写MCP_AUTH_TOKEN}
+      MCP_ENCRYPTION_KEY: ${MCP_ENCRYPTION_KEY:?请填写MCP_ENCRYPTION_KEY}
+      MCP_ALLOWED_BASE_URLS: ${MCP_ALLOWED_BASE_URLS:-http://mcp-demo:8090}
+      MCP_MAX_ROUNDS: ${MCP_MAX_ROUNDS:-3}
+      MCP_MAX_CALLS_PER_TURN: ${MCP_MAX_CALLS_PER_TURN:-6}
+      MCP_MAX_CALLS_PER_CONVERSATION: ${MCP_MAX_CALLS_PER_CONVERSATION:-30}
       SESSION_SECRET: ${SESSION_SECRET:?请在 .env 中填写 SESSION_SECRET}
       MYSQL_HOST: db
       MYSQL_PORT: "3306"
@@ -50,6 +56,7 @@ services:
     depends_on:
       - db
       - qdrant
+      - mcp-demo
     # 不单独暴露端口：只经 web 反代访问；应用自身会重试等待 db 就绪（design.md D4）
     restart: unless-stopped
 
@@ -58,6 +65,13 @@ services:
     image: qdrant/qdrant:v1.11.3
     volumes:
       - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  mcp-demo:
+    build: ./mcp-server
+    environment:
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?请填写MCP_AUTH_TOKEN}
+      MCP_PORT: "8090"
     restart: unless-stopped
 
   web:
