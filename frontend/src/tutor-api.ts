@@ -1,9 +1,10 @@
 import { request, getToken, clearToken, type Citation } from './api'
+import type { ToolCall } from './mcp-api'
 import { SSEParser, type StreamEvent } from './sse'
 export interface Agent { id:number; name:string; prompt:string; enabled:boolean; skill_ids:number[]; material_ids:number[] }
-export interface Skill { id:number; name:string; source_text:string; enabled:boolean; trigger_text:string }
+export interface Skill { id:number; name:string; source_text:string; enabled:boolean; trigger_text:string;tools:string[] }
 export interface Conversation { id:number; agent_id:number; agent_name:string; title:string }
-export interface Message { id:number; role:'user'|'assistant'; content:string; citations:Citation[]; skill_name:string; status:'complete'|'partial' }
+export interface Message { id:number; role:'user'|'assistant'; content:string; citations:Citation[]; skill_name:string; status:'complete'|'partial';tool_calls?:ToolCall[] }
 export const tutorAPI={
  agents:()=>request<Agent[]>('/api/agents'),
  saveAgent:(a:Omit<Agent,'id'>,id?:number)=>request<Agent>(id?`/api/agents/${id}`:'/api/agents',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}),
