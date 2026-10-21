@@ -1,6 +1,7 @@
 package tutor
 
 import (
+	"campusclaw/backend/internal/mcp"
 	"fmt"
 	"sort"
 	"strings"
@@ -81,9 +82,15 @@ func ParseSkill(source string) (Skill, error) {
 	default:
 		return s, fmt.Errorf("启用只能填写是或否")
 	}
-	for _, tool := range splitWords(values["工具"]) {
+	for _, tool := range strings.FieldsFunc(values["工具"], func(r rune) bool { return strings.ContainsRune(",，、;；|", r) }) {
+		tool = strings.TrimSpace(tool)
 		if tool != "knowledge_search" {
-			return s, fmt.Errorf("仅支持工具 knowledge_search")
+			if _, _, err := mcp.ParseRef(tool); err != nil {
+				return s, err
+			}
+		}
+		if len(s.Tools) >= 16 {
+			return s, fmt.Errorf("每个技能最多绑定16个工具")
 		}
 		s.Tools = append(s.Tools, tool)
 	}

@@ -13,6 +13,7 @@ import (
 	"campusclaw/backend/internal/config"
 	"campusclaw/backend/internal/db"
 	"campusclaw/backend/internal/materials"
+	"campusclaw/backend/internal/mcp"
 	"campusclaw/backend/internal/retrieval"
 	"campusclaw/backend/internal/tutor"
 )
@@ -26,6 +27,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("数据库配置错误：%v", err)
 	}
+	mcpSvc, err := mcp.FromEnv(d)
+	if err != nil {
+		log.Fatalf("MCP配置错误：%v", err)
+	}
 	if err := db.WaitReady(d); err != nil {
 		log.Fatalf("%v", err)
 	}
@@ -38,6 +43,9 @@ func main() {
 
 	if err := tutor.Migrate(d); err != nil {
 		log.Fatalf("助手建表失败：%v", err)
+	}
+	if err := mcp.Migrate(d); err != nil {
+		log.Fatalf("MCP建表失败：%v", err)
 	}
 	if err := tutor.Seed(d); err != nil {
 		log.Fatalf("助手种子失败：%v", err)
@@ -103,6 +111,7 @@ func main() {
 	mux.HandleFunc("POST /api/materials/{id}/reindex", dbGuard(authSvc.Middleware(auth.RequireTeacher(retrievalSvc.Reindex))))
 
 	tutorSvc := tutor.NewService(d, retrievalSvc.Searcher, chat)
+	tutorSvc.MCP = mcpSvc
 	mux.HandleFunc("GET /api/agents", dbGuard(authSvc.Middleware(tutorSvc.Agents)))
 	mux.HandleFunc("GET /api/agents/{id}", dbGuard(authSvc.Middleware(tutorSvc.Agent)))
 	mux.HandleFunc("POST /api/agents", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
@@ -116,6 +125,17 @@ func main() {
 	mux.HandleFunc("POST /api/conversations", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.CreateConversation))))
 	mux.HandleFunc("GET /api/conversations/{id}", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.Conversation))))
 	mux.HandleFunc("POST /api/conversations/{id}/messages", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.SendMessage))))
+
+	mux.HandleFunc("GET /api/mcp/servers", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.ListServers))))
+	mux.HandleFunc("POST /api/mcp/servers", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.SaveServer))))
+	mux.HandleFunc("GET /api/mcp/servers/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.GetServer))))
+	mux.HandleFunc("PUT /api/mcp/servers/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.SaveServer))))
+	mux.HandleFunc("DELETE /api/mcp/servers/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.DeleteServer))))
+	mux.HandleFunc("POST /api/mcp/servers/{id}/connect", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.ConnectServer))))
+	mux.HandleFunc("POST /api/mcp/servers/{id}/disconnect", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.DisconnectServer))))
+	mux.HandleFunc("GET /api/mcp/servers/{id}/tools", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.ListTools))))
+	mux.HandleFunc("POST /api/mcp/servers/{id}/tools/{tool}/approve", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.ApproveTool))))
+	mux.HandleFunc("GET /api/mcp/tool-calls", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.Calls))))
 
 	log.Printf("CampusClaw api 监听 :%s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, mux))

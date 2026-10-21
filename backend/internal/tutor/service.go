@@ -2,6 +2,7 @@ package tutor
 
 import (
 	"campusclaw/backend/internal/auth"
+	"campusclaw/backend/internal/mcp"
 	"campusclaw/backend/internal/retrieval"
 	"context"
 	"database/sql"
@@ -18,6 +19,7 @@ type Service struct {
 	Searcher *retrieval.Searcher
 	Chat     *retrieval.ChatClient
 	busy     sync.Map
+	MCP      *mcp.Manager
 }
 
 func NewService(d *sql.DB, search *retrieval.Searcher, chat *retrieval.ChatClient) *Service {
@@ -329,6 +331,19 @@ func (s *Service) SaveSkill(w http.ResponseWriter, r *http.Request) {
 	if e != nil {
 		fail(w, 400, e.Error())
 		return
+	}
+	if s.MCP != nil {
+		if err := s.MCP.ValidateRefs(r.Context(), u.ClassID, sk.Tools); err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+	} else {
+		for _, ref := range sk.Tools {
+			if ref != "knowledge_search" {
+				fail(w, 400, "MCP工具服务尚未启用")
+				return
+			}
+		}
 	}
 	tools, _ := json.Marshal(sk.Tools)
 	if r.Method == "POST" {
