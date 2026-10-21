@@ -17,8 +17,10 @@ const NoHitAnswer = "资料中未找到相关内容"
 
 // ChatMessage 是对话网关消息。客户端注入的 system 消息一律丢弃（spec 客户端 system 注入被丢弃）。
 type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
 }
 
 // Citation 是问答引用的一条出处，[n] 标注与本列表顺序一致。

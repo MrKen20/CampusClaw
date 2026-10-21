@@ -386,6 +386,7 @@ type Message struct {
 	Citations []retrieval.Citation `json:"citations"`
 	SkillName string               `json:"skill_name"`
 	Status    string               `json:"status"`
+	ToolCalls []mcp.Call           `json:"tool_calls,omitempty"`
 }
 
 func (s *Service) conversation(ctx context.Context, id int64, u auth.User) (Conversation, error) {
@@ -459,7 +460,7 @@ func (s *Service) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 201, c)
 }
 func (s *Service) messages(ctx context.Context, id int64, recent bool) ([]Message, error) {
-	q := `SELECT id,role,content,citations_json,skill_name,status FROM messages WHERE conversation_id=? ORDER BY id`
+	q := `SELECT id,role,content,citations_json,skill_name,status,COALESCE(tool_calls_json,'[]') FROM messages WHERE conversation_id=? ORDER BY id`
 	if recent {
 		q += ` DESC LIMIT 6`
 	}
@@ -471,11 +472,14 @@ func (s *Service) messages(ctx context.Context, id int64, recent bool) ([]Messag
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		var cites string
-		if e = rows.Scan(&m.ID, &m.Role, &m.Content, &cites, &m.SkillName, &m.Status); e != nil {
+		var cites, toolCalls string
+		if e = rows.Scan(&m.ID, &m.Role, &m.Content, &cites, &m.SkillName, &m.Status, &toolCalls); e != nil {
 			return nil, e
 		}
 		if e = json.Unmarshal([]byte(cites), &m.Citations); e != nil {
+			return nil, e
+		}
+		if e = json.Unmarshal([]byte(toolCalls), &m.ToolCalls); e != nil {
 			return nil, e
 		}
 		out = append(out, m)

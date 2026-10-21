@@ -2,6 +2,7 @@ package tutor
 
 import (
 	"campusclaw/backend/internal/auth"
+	"campusclaw/backend/internal/mcp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -64,9 +65,14 @@ func (s *Service) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var count int
+	var requestID int64
 	e = tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM messages WHERE conversation_id=?`, c.ID).Scan(&count)
 	if e == nil {
-		_, e = tx.ExecContext(r.Context(), `INSERT INTO messages(conversation_id,role,content,citations_json) VALUES(?,'user',?,'[]')`, c.ID, in.Content)
+		res, err := tx.ExecContext(r.Context(), `INSERT INTO messages(conversation_id,role,content,citations_json) VALUES(?,'user',?,'[]')`, c.ID, in.Content)
+		e = err
+		if e == nil {
+			requestID, e = res.LastInsertId()
+		}
 	}
 	if e == nil {
 		if count == 0 {
@@ -113,27 +119,35 @@ func (s *Service) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
-	streamErr := s.Chat.Stream(ctx, messages, func(text string) error { return emit(filter.Feed(text, false)) })
+	var toolCalls []mcp.Call
+	messages, toolCalls, streamErr := s.runTools(ctx, u, c.ID, requestID, sk, messages, func(calls []mcp.Call) error { return frame(w, "meta", map[string]any{"tool_calls": calls}) })
+	if streamErr == nil {
+		streamErr = s.Chat.Stream(ctx, messages, func(text string) error { return emit(filter.Feed(text, false)) })
+	}
 	if streamErr == nil {
 		streamErr = emit(filter.Feed("", true))
 	}
 	status := "complete"
+	if streamErr == nil && answer.Len() == 0 {
+		streamErr = fmt.Errorf("回答未生成")
+	}
 	if streamErr != nil {
 		status = "partial"
 	}
 	// Request cancellation cannot prevent recording text already sent to the student.
 	saveCtx, saveCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer saveCancel()
-	if answer.Len() == 0 {
+	if answer.Len() == 0 && len(toolCalls) == 0 {
 		_ = frame(w, "error", map[string]string{"error": "回答未生成，请稍后重试"})
 		return
 	}
 	cj, _ := json.Marshal(cites)
+	tj, _ := json.Marshal(toolCalls)
 	skillName := ""
 	if sk != nil {
 		skillName = sk.Name
 	}
-	res, e := s.DB.ExecContext(saveCtx, `INSERT INTO messages(conversation_id,role,content,citations_json,skill_name,status) VALUES(?,'assistant',?,?,?,?)`, c.ID, answer.String(), string(cj), skillName, status)
+	res, e := s.DB.ExecContext(saveCtx, `INSERT INTO messages(conversation_id,role,content,citations_json,skill_name,status,tool_calls_json) VALUES(?,'assistant',?,?,?,?,?)`, c.ID, answer.String(), string(cj), skillName, status, string(tj))
 	if e != nil {
 		_ = frame(w, "error", map[string]string{"error": "回答保存失败"})
 		return
