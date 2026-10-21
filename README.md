@@ -4,7 +4,7 @@
 > 场景：教师配置多个智能体、提示词、技能与材料绑定；学生可同时打开多个智能体的流式对话。教师登录后上传、查看、下载本班教研材料；学生登录后查看、下载本班材料；材料正文切分入库后可按班级范围检索与问答，命中可回溯到原文并标注出处；跨班访问在服务端被拒绝。
 > 不做：本迭代不做重排序、编排框架（LangChain/LlamaIndex）、作业流程、平台超级管理员、SSO/多租户、注册改密、PDF/Word 解析、生产高可用；不用前端隐藏按钮替代服务端鉴权。
 
-本仓库当前交付：第3课认证授权与入库、第4课可追溯检索，以及第5课智能体配置、技能路由和并行流式会话。
+本仓库当前交付：第3课认证授权与入库、第4课可追溯检索，第5课智能体配置、技能路由和并行流式会话，以及第6课自建MCP教学工具、受控多轮调用与审计。
 
 ## 快速启动（Docker Compose，唯一发布形态）
 
@@ -13,7 +13,8 @@
 ```bash
 cp .env.example .env
 # 编辑 .env，至少填写：SESSION_SECRET、MYSQL_PASSWORD、SEED_TEACHER_PASSWORD、SEED_STUDENT_PASSWORD
-# SESSION_SECRET 可用 openssl rand -hex 32 生成
+# SESSION_SECRET、MCP_AUTH_TOKEN、MCP_ENCRYPTION_KEY 分别用 openssl rand -hex 32 生成
+# 同时填写课程网关 CHAT_* / EMBEDDING_*，具体字段见 .env.example
 docker compose up --build -d
 docker compose ps
 ```
@@ -52,7 +53,7 @@ docker compose ps
 - 前端：React 18 + TypeScript + Vite（`frontend/`），React Markdown + Remark GFM
 - 后端：Go + 标准库 `net/http`（`backend/cmd/server` + `backend/internal/{config,db,auth,materials,knowledge,chunking,retrieval}`），bcrypt 口令哈希，服务端会话表 + Bearer Token（`Authorization` 头携带、前端存 localStorage，不用 JWT）
 - 检索：切片正文与字符区间留 MySQL `knowledge_chunks`；向量存 Qdrant 集合 `campusclaw_chunks`（余弦，维度 2048），点主键与切片 id 一致，payload 仅含五个标识字段（无正文）
-- 部署：Docker Compose（web/api/db/qdrant），环境变量经 `.env` 注入（`.env.example` 入库，`.env` 不入库）；Qdrant 不映射宿主端口，网关密钥只在服务端使用
+- 部署：Docker Compose（web/api/db/qdrant/mcp-demo），环境变量经 `.env` 注入（`.env.example` 入库，`.env` 不入库）；Qdrant 不映射宿主端口，网关密钥只在服务端使用
 
 ## 接口一览
 
@@ -78,7 +79,7 @@ docker compose ps
 
 ## 第 5 课：智能体与并行流式会话
 
-教师登录后进入侧栏「智能体配置」和「技能管理」，维护本班智能体的名称、角色提示词、启用状态、绑定技能和绑定材料。技能新建/上传使用独立编辑窗口，已有卡片负责编辑、启停与删除，删除前需确认。技能文件中名称、适用条件、启用必填，空一行后写引导规程；工具仅允许 `knowledge_search`。启用填写「是」或「否」，名称含「解题引导」的技能要求只引导、不直接给最终答案。教师不提供智能体聊天功能。
+教师登录后进入侧栏「智能体配置」和「技能管理」，维护本班智能体的名称、角色提示词、启用状态、绑定技能和绑定材料。技能新建/上传使用独立编辑窗口，已有卡片负责编辑、启停与删除，删除前需确认。技能文件中名称、适用条件、启用必填，空一行后写引导规程；第5课内置工具为 `knowledge_search`，第6课增加已批准的 `tool@server` 引用。启用填写「是」或「否」，名称含「解题引导」的技能要求只引导、不直接给最终答案。教师不提供智能体聊天功能。
 
 学生登录后默认进入「智能体」，选择启用的智能体，点击「新对话」；可以继续选择另一个智能体并新开对话。会话支持标签切换、并排查看、Enter发送和Shift+Enter换行，每个面板各自流式生成、各自停止。收起面板不删除历史，切换到资料库时仍继续生成；点击会话记录可重新打开。刷新页面后从服务器恢复会话列表，点击记录恢复消息。每个会话创建时锁定智能体，教师修改它的配置或绑定从下一轮生效；智能体停用只阻止新建会话，不阻止原会话继续。
 
@@ -117,3 +118,86 @@ python3 apitest/run_all.py --live
 Go测试覆盖技能解析/路由、上下文窗口、资料边界、SSE帧与流中断。`TUTOR_INTEGRATION=1` 时，在Compose数据库上额外测试绑定过滤、跨班向量回表兜底、两流并发、取消与部分消息持久化；集成测试只清理自己创建的测试行。前端SSE解帧可运行 `node --experimental-strip-types frontend/tests/sse.test.mjs`。
 
 新增表不替换或清空原材料、知识库、会话认证表。复建使用 `docker compose up -d --build`，不要使用 `down -v`。同伴交叉验证需要真人另行记录，自动测试不替代该环节。
+
+
+## 第 6 课：MCP 与工具接入
+
+同仓的 `mcp-server/` 是独立 Go 服务，Compose 名称 `mcp-demo`，只在内部网络监听8090，不映射宿主端口。`GET /health` 检查存活；`POST /mcp` 提供带 Bearer 鉴权的 JSON-RPC 2.0 `initialize`、`notifications/initialized`、`tools/list`、`tools/call`。本课实现2025-03-26的无状态HTTP工具子集，返回JSON（客户端同时接受JSON与SSE响应）；不支持stdio、资源、提示或有状态会话，不能视作任意第三方MCP的通用客户端。`formula_hint` 给去括号/分数/面积的检查方法，`unit_convert` 给长度/质量的单位进率，两者都不替学生算最终得数。
+
+### 环境与首次使用
+
+已有环境升级时，在原 `.env` 保留数据库、会话与课程网关配置，另加以下字段，然后运行 `docker compose up -d --build`，不要重置数据卷。
+
+| 变量 | 用途 |
+| --- | --- |
+| `MCP_AUTH_TOKEN` | 至少24字符，建议独立运行 `openssl rand -hex 32`；API与自建MCP服务共同使用 |
+| `MCP_ENCRYPTION_KEY` | 另行生成的64位十六进制串，用于AES-GCM加密登记令牌；须备份，替换后需重新登记令牌 |
+| `MCP_ALLOWED_BASE_URLS` | 逗号分隔的精确Base URL白名单，默认 `http://mcp-demo:8090`；禁止URL凭据、查询、fragment和重定向 |
+| `MCP_MAX_ROUNDS` | 默认3，允许1–5 |
+| `MCP_MAX_CALLS_PER_TURN` | 默认6，允许1–10 |
+| `MCP_MAX_CALLS_PER_CONVERSATION` | 默认30，允许1–1000，包含成功/失败/拒绝的可归属调用 |
+
+令牌与加密密钥缺失或非法时启动失败。MCP令牌独立于课程网关API Key，不能互换。所有部署密钥只从环境注入，禁止写入技能文件、前端或镜像。
+
+1. 教师进入「MCP 工具」→「登记服务器」。名称可用 `campus-tools`，Base URL填 `http://mcp-demo:8090`；此自建地址首次登记令牌可留空，由API读取环境配置。编辑时留空保留原令牌。
+2. 点击「连接并发现」，查看两个工具的**完整说明与JSON Schema**，逐个批准只读使用。说明/schema/注解变更后必须重新批准，旧指纹会返回409。重新连接相同工具整体替换缓存，不会翻倍；断开或发现失败会清空缓存。
+3. 在「技能管理」新建或编辑技能，从选择器插入已批准工具引用，保存后在智能体配置中绑定该技能。工具名严格小写，引用例如：
+
+```text
+名称：MCP数学解题引导
+适用条件：方程,去括号,面积,单位,换算,米
+工具：knowledge_search,formula_hint@campus-tools,unit_convert@campus-tools
+启用：是
+
+先了解学生卡在哪一步。需要公式提示时使用formula_hint，单位进率用unit_convert；只给方法，不计算最终得数。
+```
+
+4. 学生选择该智能体新建会话，可问“请先用公式工具给我面积提示，再用单位工具给出5米转厘米的进率。只给方法，不算最终答案。” 模型根据问题决定工具、参数和轮次，具体调用顺序不硬编码。回答区显示工具引用、轮次、成功/被拒/出错与摘要，刷新后从历史恢复。
+5. 教师在「最近工具调用」查看本班记录与状态筛选。每条含触发用户、会话、提问消息、轮次和时间。删除服务器保留历史审计；旧技能引用在运行时被拒，不冒充仍有可用工具。
+
+### 调用与安全边界
+
+命中技能后只向模型提供该技能绑定的已发现、已批准、只读且非外发工具，名称由服务器ID映射，模型不能指定任意URL。宿主以发现时同一JSON Schema验证参数，在每次执行前重查班级/连接/授权/指纹，再调用真正的远端 `tools/call`。工具结果脱敏后放在 `role=tool` 数据位，绝不拼入system；已知注入句式整条丢弃。文本检测不能保证发现所有注入，实际硬边界仍为白名单、只读批准、参数校验和限额。
+
+模型可原生多轮提出 `tool_calls`，每轮结果回传后继续决策；默认最多3轮、每问6次、会话累计30次。单次MCP请求8秒，工具阶段45秒，总请求90秒。错误、断开、参数不合法或达到限额后停止新工具动作，用已有资料继续回答。学生停止只取消当前会话，其他会话独立生成。无工具技能保留第5课主路径。
+
+SSE先发送含skill/citations的 `meta`，随后每次 `meta.tool_calls` 仅包含新调用，全部在最终正文的首个 `delta` 之前；前端累加调用而不覆盖原引用。最终回答仍来自课程网关的 `stream=true` 真实增量。消息以 `tool_calls_json` 保存调用状态，中断后保留已获得的工具信息与部分正文。
+
+### 管理接口
+
+以下接口全部要求教师身份，并从服务端会话取班级；学生403，未登录401，跨班与不存在同形404。响应不含令牌，仅 `has_auth`。
+
+| 接口 | 作用 |
+| --- | --- |
+| `GET/POST /api/mcp/servers` | 本班列表/登记 |
+| `GET/PUT/DELETE /api/mcp/servers/{id}` | 详情/修改/删除，修改后需重新连接 |
+| `POST /api/mcp/servers/{id}/connect` | 握手和整体替换发现缓存；失败502并清空 |
+| `POST /api/mcp/servers/{id}/disconnect` | 断开并清空缓存 |
+| `GET /api/mcp/servers/{id}/tools` | 完整工具说明、Schema、注解和批准状态 |
+| `POST /api/mcp/servers/{id}/tools/{tool}/approve` | 提交当前 `fingerprint` 批准只读使用 |
+| `GET /api/mcp/tool-calls` | 本班最近100条审计，按时间倒序 |
+
+Swagger继续从登录页进入，包含上述可试调接口及SSE增量示例。主库新增 `mcp_servers`、`mcp_tools`、`mcp_tool_reviews`、`mcp_tool_changes`、`mcp_tool_calls`；令牌以AES-GCM随机nonce加密保存，审计不存认证头或密钥。
+
+### 第6课验证
+
+`python3 apitest/run_all.py --live` 同时回归第5课双流并发和第6课真实MCP闭环。新增用例按管理接口URL与方法组织，使用本次运行的临时服务器、教师B账号、技能、智能体和会话，结束后按精确ID清理；测试不会修改已有MCP配置。真实调用使用课程网关额度，模型的具体工具决策不保证固定。脚本模型集成测试另行确定性覆盖两轮、Schema拒绝、越权、错误、注入、取消及三类限额，不能把自动测试当作真人同伴互验。
+
+```bash
+# 自建工具服务协议/鉴权/错误与提示边界
+docker run --rm -v "$PWD/mcp-server:/src" -w /src golang:1.23-alpine go test ./...
+# 后端全部单测/静态检查（本机无Go时）
+docker run --rm -v "$PWD/backend:/src" -w /src golang:1.23-alpine sh -c 'go test ./... && go vet ./...'
+# 在当前Compose数据库运行真实DB及脚本模型集成测试
+docker run --rm --env-file .env -e MCP_INTEGRATION=1 -e TUTOR_INTEGRATION=1 \
+  --network internetdemo_default -v "$PWD/backend:/src" -w /src golang:1.23-alpine \
+  go test -v ./internal/mcp ./internal/tutor
+# 前端增量事件与技能引用插入回归
+node --experimental-strip-types frontend/tests/tools.test.mjs
+python3 scripts/generate_openapi.py --check
+python3 apitest/run_all.py --live
+# 暂存拟提交的新文件后，扫描当前部署密钥是否进入源码/产物/镜像/日志
+python3 scripts/check_deployment_secrets.py --images
+```
+
+详细执行证据见 `openspec/changes/add-lesson6-mcp-tools/verification.md`。真人同伴互验仍需由同伴在同一环境用自己的账号验证隔离、令牌不回传、断开失效和审计范围，并留存请求/响应证据，不能由本机自动用例代勾。

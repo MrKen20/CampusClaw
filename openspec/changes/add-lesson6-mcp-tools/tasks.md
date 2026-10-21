@@ -7,4 +7,4 @@
 ## 4. 界面
 - [x] 4.1 教师MCP服务器/工具批准/审计与技能引用选择、学生工具状态；verify: 前端构建与SSE状态回归，真实浏览器桌面/390px、深浅色操作和刷新。
 ## 5. 文档与验收
-- [ ] 5.1 OpenAPI/Swagger、URL组织apitest、部署README与证据；verify: OpenAPI --check、Compose全启动、apitest --live全部通过、密钥扫描；留真实同伴互验项未代勾。
+- [x] 5.1 OpenAPI/Swagger、URL组织apitest、部署README与证据；verify: OpenAPI --check、Compose全启动、apitest --live全部通过、密钥扫描；留真实同伴互验项未代勾。

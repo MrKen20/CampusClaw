@@ -15,6 +15,16 @@
   "api/conversations/{id}/messages/POST.py",
   "api/skills/{id}/PUT.py",
   "api/skills/{id}/DELETE.py",
+  "api/mcp/servers/POST.py",
+  "api/mcp/servers/GET.py",
+  "api/mcp/servers/{id}/GET.py",
+  "api/mcp/servers/{id}/PUT.py",
+  "api/mcp/servers/{id}/connect/POST.py",
+  "api/mcp/servers/{id}/tools/GET.py",
+  "api/mcp/servers/{id}/tools/{tool}/approve/POST.py",
+  "api/mcp/tool-calls/GET.py",
+  "api/mcp/servers/{id}/disconnect/POST.py",
+  "api/mcp/servers/{id}/DELETE.py",
   "openapi.json/GET.py",
   "api/logout/POST.py"
 ]

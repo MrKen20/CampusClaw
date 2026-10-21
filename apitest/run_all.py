@@ -2,8 +2,16 @@
 import argparse,html,importlib.util,json,sys,time
 from pathlib import Path
 from common import Context
-parser=argparse.ArgumentParser();parser.add_argument('--live',action='store_true',help='exercise course gateway including three real streams');args=parser.parse_args();context=Context(args.live);results=[]
+parser=argparse.ArgumentParser();parser.add_argument('--live',action='store_true',help='exercise real course gateway, parallel streams and MCP tool loop');args=parser.parse_args();context=Context(args.live);results=[]
 root=Path(__file__).parent
+# Compose may return before the new API process starts listening behind nginx.
+for attempt in range(40):
+ try:
+  assert context.request('/health',who=None)=={'status':'ok'}
+  break
+ except Exception:
+  if attempt==39:raise SystemExit('API did not become available after 40 readiness checks')
+  time.sleep(.5)
 for name in json.loads((root/'order.json').read_text()):
  start=time.monotonic()
  try:
@@ -11,6 +19,13 @@ for name in json.loads((root/'order.json').read_text()):
  except Exception as e:
   status='FAIL';note=type(e).__name__+': '+str(e)
  results.append((name,status,note,round(time.monotonic()-start,2)));print(status,name,note,flush=True)
+# MCP fixtures are disposable and scoped to exact IDs, including on case failure.
+try:
+ from mcp_helpers import cleanup
+ cleanup(context)
+except Exception as e:
+ results.append(('MCP fixture cleanup','FAIL',type(e).__name__,0))
+ print('FAIL MCP fixture cleanup',type(e).__name__,flush=True)
 # All sessions created by the suite are explicitly revoked; no secrets enter report.
 for who in ['student','other']:
  try:context.request('/api/logout',{},who=who)
