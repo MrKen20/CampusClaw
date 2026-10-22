@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "CampusClaw API",
-    "version": "0.4.0",
-    "description": "不透明随机 Bearer Token + 服务端会话；不使用 JWT。角色/班级每次从服务器读取。API注解生成，教师配置即时生效；会话锁定智能体；第6课MCP工具发现、批准、多轮调用及审计。"
+    "version": "0.5.0",
+    "description": "不透明随机 Bearer Token + 服务端会话；不使用 JWT。角色/班级每次从服务器读取。API注解生成，教师配置即时生效；会话锁定智能体；第6课MCP工具发现、批准、多轮调用及审计；教师智能体删除与学生私人对话删除。"
   },
   "servers": [
     {
@@ -2362,6 +2362,100 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "删除本班智能体，保留只读对话历史",
+        "description": "确认后软删除并解除技能/资料绑定，配置和可选列表移除。原学生会话保留agent_deleted=true，只能阅读/删除；允许同名重建，重启不复活种子。 仅教师可操作。",
+        "operationId": "delete_api_agents_id",
+        "tags": [
+          "agents"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "删除本班智能体，保留只读对话历史"
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅教师可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅教师可操作"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "资源不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "该智能体仍有对话正在生成，请稍后再删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "该智能体仍有对话正在生成，请稍后再删除"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
       }
     },
     "/api/skills": {
@@ -3183,12 +3277,106 @@
             }
           }
         ]
+      },
+      "delete": {
+        "summary": "删除本人本班对话及消息",
+        "description": "不可恢复。本人本班所有权由会话读取，忽略客户端声明；级联删除消息，保留教师工具审计。正在生成时409，无副作用。 仅学生可使用。",
+        "operationId": "delete_api_conversations_id",
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "删除本人本班对话及消息"
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅学生可使用智能体会话",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅学生可使用智能体会话"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "资源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "资源不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "该会话正在生成，请先停止或等待结束再删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "该会话正在生成，请先停止或等待结束再删除"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
       }
     },
     "/api/conversations/{id}/messages": {
       "post": {
         "summary": "在锁定智能体的会话中流式提问",
-        "description": "真实SSE：首个meta含skill/citations；工具阶段每次meta.tool_calls增量追加真实状态，全部在首个delta前。模型原生多轮tools/call，默认上限3轮、每问6次、会话30次；失败/超限使用已有资料继续回答。delta.text为新增片段，落库后done.message_id；失败error、已生成消息含工具记录保存partial。不同会话并行，同会话409。客户端agent_id/history/class_id被忽略。 仅学生可使用。",
+        "description": "真实SSE：首个meta含skill/citations；工具阶段每次meta.tool_calls增量追加真实状态，全部在首个delta前。模型原生多轮tools/call，默认上限3轮、每问6次、会话30次；失败/超限使用已有资料继续回答。delta.text为新增片段，落库后done.message_id；失败error、已生成消息含工具记录保存partial。不同会话并行，同会话409。客户端agent_id/history/class_id被忽略。 智能体删除后的历史仍可读取，但提问409且不新增消息。 仅学生可使用。",
         "operationId": "post_api_conversations_id_messages",
         "tags": [
           "conversations"
@@ -3276,14 +3464,14 @@
             }
           },
           "409": {
-            "description": "该会话正在生成",
+            "description": "该会话正在生成，或智能体已删除使会话只读",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 },
                 "example": {
-                  "error": "该会话正在生成"
+                  "error": "该会话正在生成，或智能体已删除使会话只读"
                 }
               }
             }
@@ -3495,6 +3683,10 @@
           },
           "updated_at": {
             "type": "string"
+          },
+          "agent_deleted": {
+            "type": "boolean",
+            "description": "所属智能体已删除时为true；历史只读，可删除对话，继续提问返回409。"
           }
         }
       },

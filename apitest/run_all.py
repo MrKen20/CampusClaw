@@ -19,6 +19,13 @@ for name in json.loads((root/'order.json').read_text()):
  except Exception as e:
   status='FAIL';note=type(e).__name__+': '+str(e)
  results.append((name,status,note,round(time.monotonic()-start,2)));print(status,name,note,flush=True)
+# Lifecycle fixtures are private to this run, including on case failure.
+try:
+ from deletion_helpers import cleanup as cleanup_deletions
+ cleanup_deletions(context)
+except Exception as e:
+ results.append(('Deletion fixture cleanup','FAIL',type(e).__name__,0))
+ print('FAIL Deletion fixture cleanup',type(e).__name__,flush=True)
 # MCP fixtures are disposable and scoped to exact IDs, including on case failure.
 try:
  from mcp_helpers import cleanup

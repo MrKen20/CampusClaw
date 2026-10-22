@@ -23,7 +23,7 @@ def generate():
  routes=set(re.findall(r'mux.HandleFunc\("(GET|POST|PUT|DELETE) ([^" ]+)"',(ROOT/'backend/cmd/server/main.go').read_text()))
  if routes!=documented:raise SystemExit(f'Route/documentation drift: missing={routes-documented}, extra={documented-routes}')
  schemas=json.loads((ROOT/'scripts/api_schemas.json').read_text());schemas['Error']={'type':'object','required':['error'],'properties':{'error':{'type':'string'}}}
- return {'openapi':'3.0.3','info':{'title':'CampusClaw API','version':'0.4.0','description':'不透明随机 Bearer Token + 服务端会话；不使用 JWT。角色/班级每次从服务器读取。API注解生成，教师配置即时生效；会话锁定智能体；第6课MCP工具发现、批准、多轮调用及审计。'},'servers':[{'url':'/'}],'paths':paths,'components':{'securitySchemes':{'bearerAuth':{'type':'http','scheme':'bearer','description':'POST /api/login 返回的 token，不是 JWT'}},'schemas':schemas}}
+ return {'openapi':'3.0.3','info':{'title':'CampusClaw API','version':'0.5.0','description':'不透明随机 Bearer Token + 服务端会话；不使用 JWT。角色/班级每次从服务器读取。API注解生成，教师配置即时生效；会话锁定智能体；第6课MCP工具发现、批准、多轮调用及审计；教师智能体删除与学生私人对话删除。'},'servers':[{'url':'/'}],'paths':paths,'components':{'securitySchemes':{'bearerAuth':{'type':'http','scheme':'bearer','description':'POST /api/login 返回的 token，不是 JWT'}},'schemas':schemas}}
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--check',action='store_true');args=parser.parse_args();out=ROOT/'backend/internal/apidocs/static/openapi.json';text=json.dumps(generate(),ensure_ascii=False,indent=2)+'\n'
  if args.check:

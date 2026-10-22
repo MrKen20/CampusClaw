@@ -3,4 +3,4 @@
 ## 2. 界面优化
 - [x] 2.1 两类垃圾桶与二次确认、上传格式/MCP文案/目录高度、欢迎引导与功能示例；verify: 前端构建、示例与异步迟到删除回归、diff审查，提交。
 ## 3. 文档与运行验收
-- [ ] 3.1 同步OpenAPI/Swagger/README与URL组织用例，重建部署并记录结果；verify: OpenAPI --check、OpenSpec strict、apitest --live全通过、真实浏览器教师/学生确认取消和删除效果/低高桌面与390px/Swagger、密钥扫描；完成后提交。
+- [x] 3.1 同步OpenAPI/Swagger/README与URL组织用例，重建部署并记录结果；verify: OpenAPI --check、OpenSpec strict、apitest --live全通过、真实浏览器教师/学生确认取消和删除效果/低高桌面与390px/Swagger、密钥扫描；完成后提交。

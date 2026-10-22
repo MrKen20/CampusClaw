@@ -478,9 +478,9 @@ h1,h2,h3 { line-height:1.35; }
 @media(max-height:760px) and (min-width:761px) { .sidebar-tip { display:none; }.sidebar-account { margin-top:auto; } }
 @media(max-width:760px) { .audit-section { margin-top:30px; }.audit-section .section-toolbar { gap:15px; margin-bottom:18px; }.audit-table th,.audit-table td { padding:12px 15px; }.mcp-page .overview-strip { gap:15px; }.server-actions button { padding:8px 10px; }.discovered-tool { padding:16px; }.discovered-tool header { align-items:flex-start; gap:8px; flex-wrap:wrap; }.discovered-tool header code { font-size:11px; }.tool-description { font-size:12px; }.tool-approval-row button { font-size:10px; }.mcp-page .heading-actions { width:100%; }.mcp-page .heading-actions .primary { flex:1; } }
 /* Keep file browsing useful when categories and upload controls share a rail. */
-.library-rail { gap:10px; overflow-y:auto; }
+.library-rail { gap:8px; padding-top:20px; padding-bottom:14px; overflow-y:auto; }
 .library-rail>.rail-heading,.library-rail>.search-field,.library-rail>.category-root,.library-list-heading,.library-rail-footer { flex-shrink:0; }
-.library-rail .category-list { flex-shrink:0; max-height:clamp(90px,18dvh,150px); overflow-y:auto; }
+.library-rail .category-list { flex-shrink:0; max-height:clamp(64px,12dvh,110px); overflow-y:auto; }
 .library-file-list { flex:1 0 200px; min-height:200px; scrollbar-gutter:stable; }
 .library-file { min-height:40px; }
 .history-row { display:flex; align-items:center; border-radius:12px; margin:3px 0; padding-right:5px; }

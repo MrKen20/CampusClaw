@@ -25,6 +25,8 @@
   "api/mcp/tool-calls/GET.py",
   "api/mcp/servers/{id}/disconnect/POST.py",
   "api/mcp/servers/{id}/DELETE.py",
+  "api/agents/{id}/DELETE.py",
+  "api/conversations/{id}/DELETE.py",
   "openapi.json/GET.py",
   "api/logout/POST.py"
 ]

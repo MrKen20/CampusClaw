@@ -162,6 +162,10 @@
       },
       "updated_at": {
         "type": "string"
+      },
+      "agent_deleted": {
+        "type": "boolean",
+        "description": "所属智能体已删除时为true；历史只读，可删除对话，继续提问返回409。"
       }
     }
   },

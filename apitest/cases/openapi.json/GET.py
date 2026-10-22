@@ -7,3 +7,7 @@ def run(c):
  assert next(p for p in op['parameters'] if p['name']=='tool')['schema']['type']=='string'
  assert doc['components']['schemas']['MCPServerInput']['properties']['auth_token']['writeOnly']
  assert 'tool_calls' in doc['components']['schemas']['Message']['properties']
+
+ for route in ['/api/agents/{id}','/api/conversations/{id}']:
+  assert '204' in doc['paths'][route]['delete']['responses'] and '409' in doc['paths'][route]['delete']['responses']
+ assert doc['components']['schemas']['Conversation']['properties']['agent_deleted']['type']=='boolean'
