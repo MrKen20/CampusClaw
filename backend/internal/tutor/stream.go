@@ -48,6 +48,25 @@ func (s *Service) SendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.busy.Delete(c.ID)
+	// Re-read after claiming the conversation: a concurrent delete may have won.
+	c, e = s.conversation(r.Context(), c.ID, u)
+	if e != nil {
+		resourceError(w, e)
+		return
+	}
+	gate := s.agentGate(c.AgentID)
+	gate.RLock()
+	defer gate.RUnlock()
+	// Deletion may have completed while acquiring the agent gate.
+	c, e = s.conversation(r.Context(), c.ID, u)
+	if e != nil {
+		resourceError(w, e)
+		return
+	}
+	if c.AgentDeleted {
+		fail(w, 409, "该智能体已删除，此对话仅可查看或删除")
+		return
+	}
 	a, e := s.agent(r.Context(), c.AgentID, u.ClassID, false)
 	if e != nil {
 		resourceError(w, e)

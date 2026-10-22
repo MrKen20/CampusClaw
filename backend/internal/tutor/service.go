@@ -15,11 +15,12 @@ import (
 )
 
 type Service struct {
-	DB       *sql.DB
-	Searcher *retrieval.Searcher
-	Chat     *retrieval.ChatClient
-	busy     sync.Map
-	MCP      *mcp.Manager
+	DB         *sql.DB
+	Searcher   *retrieval.Searcher
+	Chat       *retrieval.ChatClient
+	busy       sync.Map
+	agentGates sync.Map
+	MCP        *mcp.Manager
 }
 
 func NewService(d *sql.DB, search *retrieval.Searcher, chat *retrieval.ChatClient) *Service {
@@ -64,7 +65,7 @@ type AgentInput struct {
 
 func (s *Service) agent(ctx context.Context, id, classID int64, requireEnabled bool) (Agent, error) {
 	a := Agent{SkillIDs: []int64{}, MaterialIDs: []int64{}}
-	q := `SELECT id,name,prompt,enabled FROM tutor_agents WHERE id=? AND class_id=?`
+	q := `SELECT id,name,prompt,enabled FROM tutor_agents WHERE id=? AND class_id=? AND deleted_at IS NULL`
 	if requireEnabled {
 		q += ` AND enabled=TRUE`
 	}
@@ -107,7 +108,7 @@ func resourceError(w http.ResponseWriter, e error) {
 // @api {"method":"GET","path":"/api/agents","summary":"列出本班智能体；学生只见启用者","auth":"login","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Agent"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅教师可写","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Agents(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
-	q := `SELECT id FROM tutor_agents WHERE class_id=?`
+	q := `SELECT id FROM tutor_agents WHERE class_id=? AND deleted_at IS NULL`
 	if u.Role != "teacher" {
 		q += ` AND enabled=TRUE`
 	}
@@ -136,6 +137,9 @@ func (s *Service) Agents(w http.ResponseWriter, r *http.Request) {
 	out := []Agent{}
 	for _, id := range ids {
 		a, e := s.agent(r.Context(), id, u.ClassID, u.Role != "teacher")
+		if errors.Is(e, sql.ErrNoRows) {
+			continue
+		}
 		if e != nil {
 			resourceError(w, e)
 			return
@@ -178,7 +182,7 @@ func (s *Service) SaveAgent(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 	if r.Method == "PUT" {
 		var found int64
-		e = tx.QueryRow(`SELECT id FROM tutor_agents WHERE id=? AND class_id=? FOR UPDATE`, id, u.ClassID).Scan(&found)
+		e = tx.QueryRow(`SELECT id FROM tutor_agents WHERE id=? AND class_id=? AND deleted_at IS NULL FOR UPDATE`, id, u.ClassID).Scan(&found)
 		if e != nil {
 			resourceError(w, e)
 			return
@@ -372,12 +376,13 @@ func (s *Service) SaveSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 type Conversation struct {
-	ID        int64  `json:"id"`
-	AgentID   int64  `json:"agent_id"`
-	AgentName string `json:"agent_name"`
-	Title     string `json:"title"`
-	Created   string `json:"created_at"`
-	Updated   string `json:"updated_at"`
+	ID           int64  `json:"id"`
+	AgentID      int64  `json:"agent_id"`
+	AgentName    string `json:"agent_name"`
+	AgentDeleted bool   `json:"agent_deleted"`
+	Title        string `json:"title"`
+	Created      string `json:"created_at"`
+	Updated      string `json:"updated_at"`
 }
 type Message struct {
 	ID        int64                `json:"id"`
@@ -391,14 +396,14 @@ type Message struct {
 
 func (s *Service) conversation(ctx context.Context, id int64, u auth.User) (Conversation, error) {
 	var c Conversation
-	e := s.DB.QueryRowContext(ctx, `SELECT c.id,c.agent_id,a.name,c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.id=? AND c.user_id=? AND c.class_id=? AND a.class_id=?`, id, u.ID, u.ClassID, u.ClassID).Scan(&c.ID, &c.AgentID, &c.AgentName, &c.Title, &c.Created, &c.Updated)
+	e := s.DB.QueryRowContext(ctx, `SELECT c.id,c.agent_id,a.name,(a.deleted_at IS NOT NULL),c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.id=? AND c.user_id=? AND c.class_id=? AND a.class_id=?`, id, u.ID, u.ClassID, u.ClassID).Scan(&c.ID, &c.AgentID, &c.AgentName, &c.AgentDeleted, &c.Title, &c.Created, &c.Updated)
 	return c, e
 }
 
 // @api {"method":"GET","path":"/api/conversations","summary":"列出本人本班会话","auth":"student","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Conversation"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅学生可使用智能体会话","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
-	rows, e := s.DB.QueryContext(r.Context(), `SELECT c.id,c.agent_id,a.name,c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.user_id=? AND c.class_id=? AND a.class_id=? ORDER BY c.updated_at DESC,c.id DESC`, u.ID, u.ClassID, u.ClassID)
+	rows, e := s.DB.QueryContext(r.Context(), `SELECT c.id,c.agent_id,a.name,(a.deleted_at IS NOT NULL),c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.user_id=? AND c.class_id=? AND a.class_id=? ORDER BY c.updated_at DESC,c.id DESC`, u.ID, u.ClassID, u.ClassID)
 	if e != nil {
 		dbFail(w)
 		return
@@ -407,7 +412,7 @@ func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	out := []Conversation{}
 	for rows.Next() {
 		var c Conversation
-		if e = rows.Scan(&c.ID, &c.AgentID, &c.AgentName, &c.Title, &c.Created, &c.Updated); e != nil {
+		if e = rows.Scan(&c.ID, &c.AgentID, &c.AgentName, &c.AgentDeleted, &c.Title, &c.Created, &c.Updated); e != nil {
 			dbFail(w)
 			return
 		}
@@ -430,7 +435,7 @@ func (s *Service) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var n int
-	if e := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tutor_agents WHERE class_id=? AND enabled=TRUE`, u.ClassID).Scan(&n); e != nil {
+	if e := s.DB.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM tutor_agents WHERE class_id=? AND enabled=TRUE AND deleted_at IS NULL`, u.ClassID).Scan(&n); e != nil {
 		dbFail(w)
 		return
 	}
@@ -438,6 +443,13 @@ func (s *Service) CreateConversation(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "本班暂无可用的智能体")
 		return
 	}
+	if _, e := s.agent(r.Context(), in.AgentID, u.ClassID, true); e != nil {
+		resourceError(w, e)
+		return
+	}
+	gate := s.agentGate(in.AgentID)
+	gate.RLock()
+	defer gate.RUnlock()
 	if _, e := s.agent(r.Context(), in.AgentID, u.ClassID, true); e != nil {
 		resourceError(w, e)
 		return

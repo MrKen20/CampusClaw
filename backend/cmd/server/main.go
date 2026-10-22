@@ -115,6 +115,7 @@ func main() {
 	mux.HandleFunc("GET /api/agents", dbGuard(authSvc.Middleware(tutorSvc.Agents)))
 	mux.HandleFunc("GET /api/agents/{id}", dbGuard(authSvc.Middleware(tutorSvc.Agent)))
 	mux.HandleFunc("POST /api/agents", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
+	mux.HandleFunc("DELETE /api/agents/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.DeleteAgent))))
 	mux.HandleFunc("PUT /api/agents/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
 	mux.HandleFunc("GET /api/skills", dbGuard(authSvc.Middleware(tutorSvc.Skills)))
 	mux.HandleFunc("GET /api/skills/{id}", dbGuard(authSvc.Middleware(tutorSvc.Skill)))
@@ -123,6 +124,7 @@ func main() {
 	mux.HandleFunc("DELETE /api/skills/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
 	mux.HandleFunc("GET /api/conversations", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.Conversations))))
 	mux.HandleFunc("POST /api/conversations", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.CreateConversation))))
+	mux.HandleFunc("DELETE /api/conversations/{id}", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.DeleteConversation))))
 	mux.HandleFunc("GET /api/conversations/{id}", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.Conversation))))
 	mux.HandleFunc("POST /api/conversations/{id}/messages", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.SendMessage))))
 

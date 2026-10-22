@@ -17,6 +17,38 @@ func Migrate(d *sql.DB) error {
 			return err
 		}
 	}
+	// Preserve historical agents while freeing names for active replacements.
+	for _, col := range []struct{ name, definition string }{
+		{"deleted_at", "TIMESTAMP NULL DEFAULT NULL"},
+		{"active_name", "VARCHAR(64) GENERATED ALWAYS AS (CASE WHEN deleted_at IS NULL THEN name ELSE NULL END) STORED"},
+	} {
+		var n int
+		if err := d.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='tutor_agents' AND column_name=?`, col.name).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := d.Exec(`ALTER TABLE tutor_agents ADD COLUMN ` + col.name + ` ` + col.definition); err != nil {
+				return err
+			}
+		}
+	}
+	var n int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='tutor_agents' AND index_name='uq_agent_active_name'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := d.Exec(`ALTER TABLE tutor_agents ADD UNIQUE KEY uq_agent_active_name(class_id,active_name)`); err != nil {
+			return err
+		}
+	}
+	if err := d.QueryRow(`SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='tutor_agents' AND index_name='uq_agent_name'`).Scan(&n); err != nil {
+		return err
+	}
+	if n > 0 {
+		if _, err := d.Exec(`ALTER TABLE tutor_agents DROP INDEX uq_agent_name`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
