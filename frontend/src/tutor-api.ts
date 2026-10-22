@@ -3,14 +3,16 @@ import type { ToolCall } from './mcp-api'
 import { SSEParser, type StreamEvent } from './sse'
 export interface Agent { id:number; name:string; prompt:string; enabled:boolean; skill_ids:number[]; material_ids:number[] }
 export interface Skill { id:number; name:string; source_text:string; enabled:boolean; trigger_text:string;tools:string[] }
-export interface Conversation { id:number; agent_id:number; agent_name:string; title:string }
+export interface Conversation { id:number; agent_id:number; agent_name:string; agent_deleted:boolean; title:string }
 export interface Message { id:number; role:'user'|'assistant'; content:string; citations:Citation[]; skill_name:string; status:'complete'|'partial';tool_calls?:ToolCall[] }
 export const tutorAPI={
  agents:()=>request<Agent[]>('/api/agents'),
  saveAgent:(a:Omit<Agent,'id'>,id?:number)=>request<Agent>(id?`/api/agents/${id}`:'/api/agents',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(a)}),
+ deleteAgent:(id:number)=>request<void>(`/api/agents/${id}`,{method:'DELETE'}),
  skills:()=>request<Skill[]>('/api/skills'),
  saveSkill:(source_text:string,id?:number)=>request<Skill>(id?`/api/skills/${id}`:'/api/skills',{method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_text})}),
  deleteSkill:(id:number)=>request<void>(`/api/skills/${id}`,{method:'DELETE'}),
+ deleteConversation:(id:number)=>request<void>(`/api/conversations/${id}`,{method:'DELETE'}),
  conversations:()=>request<Conversation[]>('/api/conversations'),
  create:(agent_id:number)=>request<Conversation>('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({agent_id})}),
  conversation:(id:number)=>request<{conversation:Conversation;messages:Message[]}>(`/api/conversations/${id}`),
