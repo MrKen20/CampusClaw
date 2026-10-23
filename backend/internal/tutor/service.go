@@ -48,6 +48,7 @@ func body(w http.ResponseWriter, r *http.Request, v any) bool {
 func pathID(r *http.Request) int64 { v, _ := strconv.ParseInt(r.PathValue("id"), 10, 64); return v }
 
 type Agent struct {
+	AppKey      string  `json:"app_key,omitempty"`
 	ID          int64   `json:"id"`
 	Name        string  `json:"name"`
 	Prompt      string  `json:"prompt"`
@@ -65,11 +66,13 @@ type AgentInput struct {
 
 func (s *Service) agent(ctx context.Context, id, classID int64, requireEnabled bool) (Agent, error) {
 	a := Agent{SkillIDs: []int64{}, MaterialIDs: []int64{}}
-	q := `SELECT id,name,prompt,enabled FROM tutor_agents WHERE id=? AND class_id=? AND deleted_at IS NULL`
+	q := `SELECT id,name,prompt,enabled,COALESCE(seed_key,'') FROM tutor_agents WHERE id=? AND class_id=? AND deleted_at IS NULL`
 	if requireEnabled {
 		q += ` AND enabled=TRUE`
 	}
-	e := s.DB.QueryRowContext(ctx, q, id, classID).Scan(&a.ID, &a.Name, &a.Prompt, &a.Enabled)
+	var seed string
+	e := s.DB.QueryRowContext(ctx, q, id, classID).Scan(&a.ID, &a.Name, &a.Prompt, &a.Enabled, &seed)
+	a.AppKey = applicationKey(seed)
 	if e != nil {
 		return a, e
 	}
@@ -249,7 +252,7 @@ func (s *Service) SaveAgent(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, status, a)
 }
 func (s *Service) skills(ctx context.Context, classID, agentID int64) ([]Skill, error) {
-	q := `SELECT s.id,s.name,s.trigger_text,s.subject_text,s.description,s.tools_json,s.source_text,s.enabled FROM tutor_skills s WHERE s.class_id=?`
+	q := `SELECT s.id,s.name,s.trigger_text,s.subject_text,s.description,s.tools_json,s.source_text,s.enabled,COALESCE(s.resources_json,'{}') FROM tutor_skills s WHERE s.class_id=?`
 	args := []any{classID}
 	if agentID > 0 {
 		q += ` AND s.enabled=TRUE AND s.id IN (SELECT skill_id FROM tutor_agent_skills WHERE agent_id=?)`
@@ -264,13 +267,14 @@ func (s *Service) skills(ctx context.Context, classID, agentID int64) ([]Skill, 
 	out := []Skill{}
 	for rows.Next() {
 		var v Skill
-		var tools string
-		if e = rows.Scan(&v.ID, &v.Name, &v.Trigger, &v.Subject, &v.Description, &tools, &v.Source, &v.Enabled); e != nil {
+		var tools, resources string
+		if e = rows.Scan(&v.ID, &v.Name, &v.Trigger, &v.Subject, &v.Description, &tools, &v.Source, &v.Enabled, &resources); e != nil {
 			return nil, e
 		}
 		if e = json.Unmarshal([]byte(tools), &v.Tools); e != nil {
 			return nil, e
 		}
+		_ = json.Unmarshal([]byte(resources), &v.Resources)
 		out = append(out, v)
 	}
 	return out, rows.Err()
@@ -350,9 +354,12 @@ func (s *Service) SaveSkill(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	tools, _ := json.Marshal(sk.Tools)
+	resources, _ := r.Context().Value(resourceKey{}).(map[string]string)
+	resourceJSON, _ := json.Marshal(resources)
+	sk.Resources = resources
 	if r.Method == "POST" {
 		var res sql.Result
-		res, e = s.DB.ExecContext(r.Context(), `INSERT INTO tutor_skills(class_id,name,trigger_text,subject_text,description,tools_json,source_text,enabled) VALUES(?,?,?,?,?,?,?,?)`, u.ClassID, sk.Name, sk.Trigger, sk.Subject, sk.Description, string(tools), sk.Source, sk.Enabled)
+		res, e = s.DB.ExecContext(r.Context(), `INSERT INTO tutor_skills(class_id,name,trigger_text,subject_text,description,tools_json,source_text,enabled,resources_json) VALUES(?,?,?,?,?,?,?,?,?)`, u.ClassID, sk.Name, sk.Trigger, sk.Subject, sk.Description, string(tools), sk.Source, sk.Enabled, string(resourceJSON))
 		if e == nil {
 			id, e = res.LastInsertId()
 		}
@@ -386,24 +393,24 @@ type Conversation struct {
 }
 type Message struct {
 	ID        int64                `json:"id"`
+	Created   string               `json:"created_at"`
 	Role      string               `json:"role"`
 	Content   string               `json:"content"`
 	Citations []retrieval.Citation `json:"citations"`
 	SkillName string               `json:"skill_name"`
 	Status    string               `json:"status"`
 	ToolCalls []mcp.Call           `json:"tool_calls,omitempty"`
+	HasTrace  bool                 `json:"has_trace"`
 }
 
 func (s *Service) conversation(ctx context.Context, id int64, u auth.User) (Conversation, error) {
-	var c Conversation
-	e := s.DB.QueryRowContext(ctx, `SELECT c.id,c.agent_id,a.name,(a.deleted_at IS NOT NULL),c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.id=? AND c.user_id=? AND c.class_id=? AND a.class_id=?`, id, u.ID, u.ClassID, u.ClassID).Scan(&c.ID, &c.AgentID, &c.AgentName, &c.AgentDeleted, &c.Title, &c.Created, &c.Updated)
-	return c, e
+	return scanConversation(s.DB.QueryRowContext(ctx, `SELECT `+conversationTimeColumns+` FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.id=? AND c.user_id=? AND c.class_id=? AND a.class_id=?`, id, u.ID, u.ClassID, u.ClassID))
 }
 
 // @api {"method":"GET","path":"/api/conversations","summary":"列出本人本班会话","auth":"student","status":200,"request":null,"response":{"type":"array","items":{"$ref":"#/components/schemas/Conversation"}},"errors":{"400":"参数非法或本班名称重复","401":"未登录","403":"仅学生可使用智能体会话","404":"资源不存在（他班与不存在同形）","503":"服务暂时不可用"}}
 func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.FromContext(r.Context())
-	rows, e := s.DB.QueryContext(r.Context(), `SELECT c.id,c.agent_id,a.name,(a.deleted_at IS NOT NULL),c.title,c.created_at,c.updated_at FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.user_id=? AND c.class_id=? AND a.class_id=? ORDER BY c.updated_at DESC,c.id DESC`, u.ID, u.ClassID, u.ClassID)
+	rows, e := s.DB.QueryContext(r.Context(), `SELECT `+conversationTimeColumns+` FROM conversations c JOIN tutor_agents a ON a.id=c.agent_id WHERE c.user_id=? AND c.class_id=? AND a.class_id=? ORDER BY last_activity DESC,c.id DESC`, u.ID, u.ClassID, u.ClassID)
 	if e != nil {
 		dbFail(w)
 		return
@@ -411,8 +418,8 @@ func (s *Service) Conversations(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []Conversation{}
 	for rows.Next() {
-		var c Conversation
-		if e = rows.Scan(&c.ID, &c.AgentID, &c.AgentName, &c.AgentDeleted, &c.Title, &c.Created, &c.Updated); e != nil {
+		c, err := scanConversation(rows)
+		if err != nil {
 			dbFail(w)
 			return
 		}
@@ -472,7 +479,7 @@ func (s *Service) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	jsonResponse(w, 201, c)
 }
 func (s *Service) messages(ctx context.Context, id int64, recent bool) ([]Message, error) {
-	q := `SELECT id,role,content,citations_json,skill_name,status,COALESCE(tool_calls_json,'[]') FROM messages WHERE conversation_id=? ORDER BY id`
+	q := `SELECT id,role,content,citations_json,skill_name,status,COALESCE(tool_calls_json,'[]'),(llm_trace_json IS NOT NULL),UNIX_TIMESTAMP(created_at) FROM messages WHERE conversation_id=? ORDER BY id`
 	if recent {
 		q += ` DESC LIMIT 6`
 	}
@@ -485,9 +492,11 @@ func (s *Service) messages(ctx context.Context, id int64, recent bool) ([]Messag
 	for rows.Next() {
 		var m Message
 		var cites, toolCalls string
-		if e = rows.Scan(&m.ID, &m.Role, &m.Content, &cites, &m.SkillName, &m.Status, &toolCalls); e != nil {
+		var created int64
+		if e = rows.Scan(&m.ID, &m.Role, &m.Content, &cites, &m.SkillName, &m.Status, &toolCalls, &m.HasTrace, &created); e != nil {
 			return nil, e
 		}
+		m.Created = timestamp(created)
 		if e = json.Unmarshal([]byte(cites), &m.Citations); e != nil {
 			return nil, e
 		}
@@ -517,5 +526,11 @@ func (s *Service) Conversation(w http.ResponseWriter, r *http.Request) {
 		dbFail(w)
 		return
 	}
+	var seed string
+	if e = s.DB.QueryRowContext(r.Context(), `SELECT COALESCE(seed_key,'') FROM tutor_agents WHERE id=? AND class_id=?`, c.AgentID, u.ClassID).Scan(&seed); e != nil {
+		dbFail(w)
+		return
+	}
+	m = projectHistory(Agent{AppKey: applicationKey(seed)}, m)
 	jsonResponse(w, 200, map[string]any{"conversation": c, "messages": m})
 }

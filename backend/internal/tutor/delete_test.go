@@ -305,7 +305,7 @@ func TestDeletedSeedAndMigrationIntegration(t *testing.T) {
 	}
 	seed()
 	var n int
-	d.QueryRow(`SELECT COUNT(*) FROM tutor_agents WHERE class_id=?`, class).Scan(&n)
+	d.QueryRow(`SELECT COUNT(*) FROM tutor_agents WHERE class_id=? AND seed_key IN ('guidance','explain')`, class).Scan(&n)
 	if n != 2 {
 		t.Fatal("seed resurrected")
 	}

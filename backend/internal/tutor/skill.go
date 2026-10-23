@@ -2,20 +2,22 @@ package tutor
 
 import (
 	"campusclaw/backend/internal/mcp"
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 )
 
 type Skill struct {
-	ID          int64    `json:"id"`
-	Name        string   `json:"name"`
-	Trigger     string   `json:"trigger_text"`
-	Subject     string   `json:"subject_text"`
-	Description string   `json:"description"`
-	Tools       []string `json:"tools"`
-	Source      string   `json:"source_text"`
-	Enabled     bool     `json:"enabled"`
+	ID          int64             `json:"id"`
+	Name        string            `json:"name"`
+	Trigger     string            `json:"trigger_text"`
+	Subject     string            `json:"subject_text"`
+	Description string            `json:"description"`
+	Tools       []string          `json:"tools"`
+	Source      string            `json:"source_text"`
+	Enabled     bool              `json:"enabled"`
+	Resources   map[string]string `json:"resources,omitempty"`
 }
 
 func short(s string, n int) string {
@@ -31,6 +33,9 @@ func ParseSkill(source string) (Skill, error) {
 		return s, fmt.Errorf("技能文件最多8000字")
 	}
 	source = strings.ReplaceAll(source, "\r\n", "\n")
+	if strings.HasPrefix(strings.TrimSpace(source), "---\n") {
+		return parseManifest(strings.TrimSpace(source))
+	}
 	parts := strings.SplitN(strings.TrimSpace(source), "\n\n", 2)
 	if len(parts) != 2 || strings.TrimSpace(parts[1]) == "" {
 		return s, fmt.Errorf("元数据后须空一行并填写技能说明")
@@ -122,4 +127,10 @@ func Route(skills []Skill, q string) *Skill {
 		}
 	}
 	return chosen
+}
+
+type resourceKey struct{}
+
+func withResources(ctx context.Context, r map[string]string) context.Context {
+	return context.WithValue(ctx, resourceKey{}, r)
 }

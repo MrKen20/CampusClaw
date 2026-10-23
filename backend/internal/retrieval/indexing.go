@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log"
+	"sync"
 
 	"campusclaw/backend/internal/chunking"
 	"campusclaw/backend/internal/config"
@@ -12,15 +13,49 @@ import (
 // Indexer 把材料正文切分为切片、写入 MySQL，并逐切片嵌入后写入 Qdrant。
 // 单切片嵌入失败不中断同批其余切片；失败切片标 failed 且 Qdrant 无残留（spec 嵌入失败不丢原文）。
 type Indexer struct {
-	DB    *sql.DB
-	Cfg   *config.Config
-	Embed *EmbeddingClient
-	Qdr   *QdrantClient
+	materialLocks sync.Map
+	DB            *sql.DB
+	Cfg           *config.Config
+	Embed         *EmbeddingClient
+	Qdr           *QdrantClient
 }
 
 // IndexMaterial 按策略对材料重建索引：先删旧切片与旧向量，再重新切分、嵌入、写入（幂等）。
 // 上传场景调用时 strategy 为 auto（custom/hierarchy 经 reindex 接口进入）。
+// WithMaterial serializes source mutation and every indexing entry point for a material.
+func (ix *Indexer) WithMaterial(ctx context.Context, id int64, fn func() error) error {
+	candidate := make(chan struct{}, 1)
+	candidate <- struct{}{}
+	actual, _ := ix.materialLocks.LoadOrStore(id, candidate)
+	gate := actual.(chan struct{})
+	select {
+	case <-gate:
+		defer func() { gate <- struct{}{} }()
+		return fn()
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
 func (ix *Indexer) IndexMaterial(ctx context.Context, materialID, entryID, classID int64, bodyText, strategy string, opts chunking.Options) (int, error) {
+	n := 0
+	err := ix.WithMaterial(ctx, materialID, func() error {
+		var err error
+		n, err = ix.IndexCurrentLocked(ctx, materialID, strategy, opts)
+		return err
+	})
+	return n, err
+}
+
+// IndexCurrentLocked is called only while holding WithMaterial; caller arguments cannot replay stale source text.
+func (ix *Indexer) IndexCurrentLocked(ctx context.Context, materialID int64, strategy string, opts chunking.Options) (int, error) {
+	var entryID, classID int64
+	var bodyText string
+	if err := ix.DB.QueryRowContext(ctx, `SELECT e.id,m.class_id,e.body_text FROM materials m JOIN knowledge_entries e ON e.material_id=m.id WHERE m.id=? ORDER BY e.id LIMIT 1`, materialID).Scan(&entryID, &classID, &bodyText); err != nil {
+		return 0, err
+	}
+	return ix.indexText(ctx, materialID, entryID, classID, bodyText, strategy, opts)
+}
+func (ix *Indexer) indexText(ctx context.Context, materialID, entryID, classID int64, bodyText, strategy string, opts chunking.Options) (int, error) {
 	chunks, err := chunking.Split(bodyText, strategy, opts, ix.Cfg.ChunkAutoMaxChars, ix.Cfg.ChunkAutoOverlap)
 	if err != nil {
 		return 0, err // 参数越界：调用方返回 400，既有切片与向量保持不变

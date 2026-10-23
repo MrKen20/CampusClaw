@@ -19,6 +19,18 @@ for name in json.loads((root/'order.json').read_text()):
  except Exception as e:
   status='FAIL';note=type(e).__name__+': '+str(e)
  results.append((name,status,note,round(time.monotonic()-start,2)));print(status,name,note,flush=True)
+try:
+ from acceptance_helpers import cleanup as cleanup_acceptance
+ cleanup_acceptance(context)
+except Exception as e:
+ results.append(('Acceptance fixture cleanup','FAIL',type(e).__name__,0))
+ print('FAIL Acceptance fixture cleanup',type(e).__name__,flush=True)
+try:
+ from refinement_helpers import cleanup as cleanup_refinements
+ cleanup_refinements(context)
+except Exception as e:
+ results.append(('Refinement fixture cleanup','FAIL',type(e).__name__,0))
+ print('FAIL Refinement fixture cleanup',type(e).__name__,flush=True)
 # Lifecycle fixtures are private to this run, including on case failure.
 try:
  from deletion_helpers import cleanup as cleanup_deletions

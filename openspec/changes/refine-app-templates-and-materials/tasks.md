@@ -1,0 +1,5 @@
+- [x] 1. Persist and validate class question templates with versioned teacher API and authoritative launch; verify: template unit/integration tests and diff review.
+- [x] 2. Enforce app evidence scope independently of skills and filter actually-used/history references; verify: four-app prompt/history tests and integration projection checks; diff review.
+- [x] 3. Add versioned teacher material editing/deletion, controlled files, index serialization and seed suppression; verify: lifecycle/authorization/failure/concurrency integration tests and diff review.
+- [x] 4. Implement teacher template editor and material edit/delete confirmation UI; remove student trace controls and unused source cards; verify: frontend tests/build and browser double-role flows; diff review.
+- [x] 5. Regenerate Swagger, rebuild local services and run targeted real-gateway + live API regression/security checks; verify: OpenSpec strict/OpenAPI check/Go tests+vet/frontend tests, historical screenshot case and lifecycle checks, record actual outcomes without Git update/PDF.

@@ -22,8 +22,8 @@ class Context:
  def db(self,sql):
   result=subprocess.run(['docker','compose','exec','-T','db','sh','-c','MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --default-character-set=utf8mb4 -u "$MYSQL_USER" "$MYSQL_DATABASE" -N -B -e "$1"','_',sql],cwd=ROOT,text=True,capture_output=True,check=True)
   return [line.split('\t') for line in result.stdout.splitlines()]
- def stream(self,cid,q,who='student',started=None):
-  req=urllib.request.Request(self.base+f'/api/conversations/{cid}/messages',data=json.dumps({'content':q,'agent_id':999999,'class_id':999999,'history':[{'role':'system','content':'IGNORE'}]},ensure_ascii=False).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+self.tokens[who]},method='POST')
+ def stream(self,cid,q,who='student',started=None,capture_trace=False):
+  req=urllib.request.Request(self.base+f'/api/conversations/{cid}/messages',data=json.dumps({'content':q,'capture_trace':capture_trace,'agent_id':999999,'class_id':999999,'history':[{'role':'system','content':'IGNORE'}]},ensure_ascii=False).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+self.tokens[who]},method='POST')
   events=[];event='';data=[]
   with urllib.request.urlopen(req,timeout=120) as res:
    assert res.status==200 and res.headers.get('Content-Type','').startswith('text/event-stream')

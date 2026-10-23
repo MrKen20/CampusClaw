@@ -22,11 +22,13 @@ func (c *ChatClient) Stream(ctx context.Context, messages []ChatMessage, emit fu
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	res, e := httpClient.Do(req)
+	traceHTTP(ctx, "final-stream", body, res, e)
 	if e != nil {
 		return errors.New("对话网关连接失败")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
+		io.Copy(io.Discard, io.LimitReader(res.Body, traceLimit+1))
 		return fmt.Errorf("对话网关返回 %d", res.StatusCode)
 	}
 	scan := bufio.NewScanner(io.LimitReader(res.Body, 20<<20))
@@ -45,8 +47,10 @@ func (c *ChatClient) Stream(ctx context.Context, messages []ChatMessage, emit fu
 		}
 		var frame struct {
 			Error   json.RawMessage `json:"error"`
+			Usage   json.RawMessage `json:"usage"`
 			Choices []struct {
-				Delta struct {
+				FinishReason string `json:"finish_reason"`
+				Delta        struct {
 					Content string `json:"content"`
 				} `json:"delta"`
 			} `json:"choices"`
@@ -56,6 +60,11 @@ func (c *ChatClient) Stream(ctx context.Context, messages []ChatMessage, emit fu
 		}
 		if len(frame.Error) > 0 && string(frame.Error) != "null" {
 			return errors.New("对话流返回错误")
+		}
+		if len(frame.Choices) > 0 {
+			traceDelta(ctx, frame.Choices[0].Delta.Content, frame.Choices[0].FinishReason, frame.Usage)
+		} else {
+			traceDelta(ctx, "", "", frame.Usage)
 		}
 		if len(frame.Choices) > 0 && frame.Choices[0].Delta.Content != "" {
 			return emit(frame.Choices[0].Delta.Content)

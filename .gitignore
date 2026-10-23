@@ -17,3 +17,8 @@ backend/campusclaw-api
 apitest/reports/
 __pycache__/
 *.pyc
+
+# Local traces, working notes and TypeScript build cache
+output/
+.workbuddy/memory/
+*.tsbuildinfo

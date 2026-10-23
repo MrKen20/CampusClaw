@@ -27,6 +27,13 @@
   "api/mcp/servers/{id}/DELETE.py",
   "api/agents/{id}/DELETE.py",
   "api/conversations/{id}/DELETE.py",
+  "api/ai-apps/GET.py",
+  "api/ai-apps/{key}/launch/POST.py",
+  "api/skills/import/POST.py",
+  "api/conversations/{id}/messages/{message}/trace/GET.py",
+  "api/ai-apps/{key}/template/PUT.py",
+  "api/materials/{id}/PUT.py",
+  "api/materials/{id}/DELETE.py",
   "openapi.json/GET.py",
   "api/logout/POST.py"
 ]

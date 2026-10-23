@@ -103,6 +103,8 @@ func main() {
 	mux.HandleFunc("GET /api/materials", dbGuard(authSvc.Middleware(matSvc.List)))
 	mux.HandleFunc("GET /api/materials/{id}", dbGuard(authSvc.Middleware(matSvc.Detail)))
 	mux.HandleFunc("GET /api/materials/{id}/file", dbGuard(authSvc.Middleware(matSvc.File)))
+	mux.HandleFunc("PUT /api/materials/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(matSvc.Update))))
+	mux.HandleFunc("DELETE /api/materials/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(matSvc.Delete))))
 	mux.HandleFunc("POST /api/materials", dbGuard(authSvc.Middleware(auth.RequireTeacher(matSvc.Upload))))
 
 	// 第 4 课：检索、问答与索引重建（均在 dbGuard 与会话中间件之后，design.md 接口一览）
@@ -112,6 +114,9 @@ func main() {
 
 	tutorSvc := tutor.NewService(d, retrievalSvc.Searcher, chat)
 	tutorSvc.MCP = mcpSvc
+	mux.HandleFunc("PUT /api/ai-apps/{key}/template", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAppTemplate))))
+	mux.HandleFunc("GET /api/ai-apps", dbGuard(authSvc.Middleware(tutorSvc.Apps)))
+	mux.HandleFunc("POST /api/ai-apps/{key}/launch", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.LaunchApp))))
 	mux.HandleFunc("GET /api/agents", dbGuard(authSvc.Middleware(tutorSvc.Agents)))
 	mux.HandleFunc("GET /api/agents/{id}", dbGuard(authSvc.Middleware(tutorSvc.Agent)))
 	mux.HandleFunc("POST /api/agents", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
@@ -119,6 +124,7 @@ func main() {
 	mux.HandleFunc("PUT /api/agents/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveAgent))))
 	mux.HandleFunc("GET /api/skills", dbGuard(authSvc.Middleware(tutorSvc.Skills)))
 	mux.HandleFunc("GET /api/skills/{id}", dbGuard(authSvc.Middleware(tutorSvc.Skill)))
+	mux.HandleFunc("POST /api/skills/import", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.ImportSkill))))
 	mux.HandleFunc("POST /api/skills", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
 	mux.HandleFunc("PUT /api/skills/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
 	mux.HandleFunc("DELETE /api/skills/{id}", dbGuard(authSvc.Middleware(auth.RequireTeacher(tutorSvc.SaveSkill))))
@@ -126,6 +132,7 @@ func main() {
 	mux.HandleFunc("POST /api/conversations", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.CreateConversation))))
 	mux.HandleFunc("DELETE /api/conversations/{id}", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.DeleteConversation))))
 	mux.HandleFunc("GET /api/conversations/{id}", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.Conversation))))
+	mux.HandleFunc("GET /api/conversations/{id}/messages/{message}/trace", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.MessageTrace))))
 	mux.HandleFunc("POST /api/conversations/{id}/messages", dbGuard(authSvc.Middleware(auth.RequireStudent(tutorSvc.SendMessage))))
 
 	mux.HandleFunc("GET /api/mcp/servers", dbGuard(authSvc.Middleware(auth.RequireTeacher(mcpSvc.ListServers))))

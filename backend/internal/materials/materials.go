@@ -108,6 +108,7 @@ func (s *Service) List(w http.ResponseWriter, r *http.Request) {
 
 // materialRow 是"先取行再校验"（fetch-then-check）的中间结构。
 type materialRow struct {
+	version   int64
 	id        int64
 	classID   int64
 	className string
@@ -120,10 +121,10 @@ type materialRow struct {
 func (s *Service) fetchByID(id int64) (*materialRow, error) {
 	var m materialRow
 	err := s.DB.QueryRow(`
-		SELECT m.id, m.class_id, c.name, m.title, m.file_path, m.created_at
+		SELECT m.id, m.class_id, c.name, m.title, m.file_path, m.created_at,m.version
 		FROM materials m JOIN classes c ON c.id = m.class_id
 		WHERE m.id = ?`, id).
-		Scan(&m.id, &m.classID, &m.className, &m.title, &m.filePath, &m.createdAt)
+		Scan(&m.id, &m.classID, &m.className, &m.title, &m.filePath, &m.createdAt, &m.version)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +157,7 @@ func (s *Service) fetchAuthorized(w http.ResponseWriter, r *http.Request) *mater
 }
 
 // Detail 处理 GET /api/materials/{id}：返回元数据与知识库正文，不含磁盘路径。
-// @api {"method":"GET","path":"/api/materials/{id}","summary":"读取材料正文","auth":"login","status":200,"request":null,"response":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"title":{"type":"string"},"body":{"type":"string"},"class_name":{"type":"string"},"created_at":{"type":"string"}}},"errors":{"401":"未登录","404":"材料不存在（含跨班）","503":"服务暂时不可用"}}
+// @api {"method":"GET","path":"/api/materials/{id}","summary":"读取材料正文","auth":"login","status":200,"request":null,"response":{"type":"object","properties":{"id":{"type":"integer","format":"int64"},"title":{"type":"string"},"body":{"type":"string"},"class_name":{"type":"string"},"created_at":{"type":"string"},"version":{"type":"integer","minimum":1}}},"errors":{"401":"未登录","404":"材料不存在（含跨班）","503":"服务暂时不可用"}}
 func (s *Service) Detail(w http.ResponseWriter, r *http.Request) {
 	m := s.fetchAuthorized(w, r)
 	if m == nil {
@@ -175,6 +176,7 @@ func (s *Service) Detail(w http.ResponseWriter, r *http.Request) {
 		"class_name": m.className,
 		"created_at": m.createdAt,
 		"body":       body,
+		"version":    m.version,
 	})
 }
 

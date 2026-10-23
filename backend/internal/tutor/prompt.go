@@ -23,6 +23,14 @@ func BuildMessages(a Agent, sk *Skill, history []Message, hits []retrieval.Hit) 
 			prompt += "\n硬性要求：只引导，不直接给最终答案。先判断学生的步骤是否正确，指出错误所在与下一步该检查什么，不写最终得数，也不替学生做完整道题。"
 		}
 	}
+	question := ""
+	for _, m := range history {
+		if m.Role == "user" {
+			question = m.Content
+		}
+	}
+	hits = eligibleHits(a, question, hits)
+	history = projectHistory(a, history)
 	cites := []retrieval.Citation{}
 	var evidence strings.Builder
 	for _, h := range hits {
@@ -37,7 +45,7 @@ func BuildMessages(a Agent, sk *Skill, history []Message, hits []retrieval.Hit) 
 	if len(cites) == 0 {
 		prompt += "\n没有检索依据：仍按角色和技能作答，但不要写[n]出处编号，不得编造材料，不得整段回答‘资料中未找到相关内容’。"
 	} else {
-		prompt += "\n优先用用户消息里的编号资料，引用资料的句子必须标[1]等合法编号，至少标注一次；每个编号必须对应提供的资料，不能编造。"
+		prompt += "\n优先用用户消息里的编号资料，只在资料直接支持当前结论时标[1]等合法编号，不强制引用；每个编号必须对应提供的资料，不能编造。"
 	}
 	prompt += "\n" + dataBoundary
 	out := []retrieval.ChatMessage{{Role: "system", Content: prompt}}

@@ -1,6 +1,6 @@
 import type { ToolCall } from './mcp-api'
 import type { Citation } from './api'
-export interface StreamEvent { event:string; data:{text?:string;error?:string;message_id?:number;citations?:Citation[];skill?:{name:string}|null;tool_calls?:ToolCall[]} }
+export interface StreamEvent { event:string; data:{text?:string;error?:string;message_id?:number;citations?:Citation[];skill?:{name:string}|null;tool_calls?:ToolCall[];created_at?:string;user_created_at?:string;assistant_created_at?:string} }
 // SSE frames may split anywhere, including inside a UTF-8 character or CRLF.
 export class SSEParser {
  private pending=''

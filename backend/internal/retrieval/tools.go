@@ -40,11 +40,13 @@ func (c *ChatClient) DecideTools(ctx context.Context, messages []ChatMessage, to
 	req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 	res, e := httpClient.Do(req)
+	traceHTTP(ctx, "tool-planning", b, res, e)
 	if e != nil {
 		return ChatMessage{}, errors.New("工具规划暂不可用，改用已有信息回答")
 	}
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
+		io.Copy(io.Discard, io.LimitReader(res.Body, traceLimit+1))
 		return ChatMessage{}, fmt.Errorf("工具规划网关返回%d，改用已有信息回答", res.StatusCode)
 	}
 	data, e := io.ReadAll(io.LimitReader(res.Body, (2<<20)+1))

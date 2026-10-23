@@ -1,0 +1,5 @@
+- [x] 1. Implement canonical SKILL.md / ZIP import and built-in skill sources; verify: Go parser/archive unit tests plus existing tutor tests, inspect diff.
+- [x] 2. Implement application catalog, templates and class-local seeding/launch with authorization; verify: template unit tests and DB integration tests for role/class/disabled/deleted behavior, inspect diff.
+- [x] 3. Implement opt-in per-turn request/response capture and owner-only trace endpoint; verify: HTTP capture/concurrency/bounds tests and integration ownership checks, inspect diff.
+- [x] 4. Implement AI app forms, teacher template/import controls and conversation trace viewer; verify: frontend build/tests and browser both roles, inspect diff.
+- [x] 5. Update Swagger and perform deployed regression/real gateway evidence for the five questions; verify: OpenSpec strict, OpenAPI check, Go tests/vet, frontend build/tests, live API suite, real app/RAG/skill/MCP traces and deployment secret scan. Record measured results without PDF or remote update.

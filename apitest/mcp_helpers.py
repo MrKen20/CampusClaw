@@ -24,13 +24,23 @@ def permission(c,route,data=None,method=None):
  c.request(route,data,method=method,who='student',expected=403)
  c.request(route,data,method=method,who=None,expected=401)
 def stream_calls(c):
- events=c.stream(c.mcp_conv['id'],'请先调用公式工具给我面积方法，再调用单位工具给出5米转厘米的进率，只讲方法，不给最终得数。')
+ events=c.stream(c.mcp_conv['id'],'请先调用公式工具给我面积方法，再调用单位工具给出5米转厘米的进率，只讲方法，不给最终得数。',capture_trace=True)
  assert events[-1][0]=='done' and any(k=='delta' for k,v in events)
  calls=[call for k,v in events if k=='meta' for call in v.get('tool_calls',[])]
  first=next(i for i,(k,v) in enumerate(events) if k=='delta')
  assert all(i<first for i,(k,v) in enumerate(events) if k=='meta' and v.get('tool_calls'))
  history=c.request('/api/conversations/'+str(c.mcp_conv['id']),who='student')
  assert history['messages'][-1].get('tool_calls')==calls
+ trace=c.request('/api/conversations/'+str(c.mcp_conv['id'])+'/messages/'+str(history['messages'][-1]['id'])+'/trace',who='student')
+ planning=[v for v in trace['calls'] if v['phase']=='tool-planning']
+ if any(t['status']=='ok' for t in calls):
+  assert planning
+  req=planning[0]['request'];assert req['tool_choice']=='auto' and req['parallel_tool_calls'] is False and req['max_tokens']==700
+  assert all(t['type']=='function' and t['function']['parameters'] for t in req['tools'])
+  assert any(m['role']=='tool' for m in trace['calls'][-1]['request']['messages'])
+ else:assert not planning
+ assert trace['calls'][-1]['phase']=='final-stream'
+ safe(c,trace)
  safe(c,calls)
  return calls
 def cleanup(c):

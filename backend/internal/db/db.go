@@ -54,6 +54,7 @@ func Ready(d *sql.DB) bool {
 // Migrate 建表（幂等）。作业/助手/技能表按第 2 课规约预建，不验收业务功能。
 func Migrate(d *sql.DB) error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS material_seed_suppressions (class_id BIGINT NOT NULL,title VARCHAR(255) NOT NULL,PRIMARY KEY(class_id,title))`,
 		`CREATE TABLE IF NOT EXISTS classes (
 			id BIGINT AUTO_INCREMENT PRIMARY KEY,
 			name VARCHAR(64) NOT NULL UNIQUE
@@ -132,6 +133,15 @@ func Migrate(d *sql.DB) error {
 			return fmt.Errorf("建表失败：%w", err)
 		}
 	}
+	var n int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='materials' AND column_name='version'`).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		if _, err := d.Exec(`ALTER TABLE materials ADD COLUMN version BIGINT NOT NULL DEFAULT 1`); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -206,6 +216,13 @@ func ensureUser(d *sql.DB, username, password, role string, classID int64) (int6
 }
 
 func ensureSeedMaterial(d *sql.DB, classID, uploader int64, title, body string) error {
+	var suppressed int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM material_seed_suppressions WHERE class_id=? AND title=?`, classID, title).Scan(&suppressed); err != nil {
+		return err
+	}
+	if suppressed > 0 {
+		return nil
+	}
 	var id int64
 	err := d.QueryRow(`SELECT id FROM materials WHERE class_id = ? AND title = ?`, classID, title).Scan(&id)
 	if err == nil {

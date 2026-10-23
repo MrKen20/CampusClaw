@@ -5,6 +5,7 @@ import "database/sql"
 // Migrate adds lesson-five tables without altering the earlier placeholder tables.
 func Migrate(d *sql.DB) error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS tutor_app_templates (class_id BIGINT NOT NULL,app_key VARCHAR(32) NOT NULL,user_template TEXT NOT NULL,version BIGINT NOT NULL DEFAULT 1,PRIMARY KEY(class_id,app_key),FOREIGN KEY(class_id) REFERENCES classes(id))`,
 		`CREATE TABLE IF NOT EXISTS tutor_skills (id BIGINT AUTO_INCREMENT PRIMARY KEY,class_id BIGINT NOT NULL,name VARCHAR(32) NOT NULL,trigger_text VARCHAR(120) NOT NULL,subject_text VARCHAR(32) NOT NULL DEFAULT '',description TEXT NOT NULL,tools_json JSON NOT NULL,source_text TEXT NOT NULL,enabled BOOLEAN NOT NULL,seed_key VARCHAR(64) NULL,UNIQUE KEY uq_skill_name(class_id,name),UNIQUE KEY uq_skill_seed(class_id,seed_key),FOREIGN KEY(class_id) REFERENCES classes(id))`,
 		`CREATE TABLE IF NOT EXISTS tutor_agents (id BIGINT AUTO_INCREMENT PRIMARY KEY,class_id BIGINT NOT NULL,name VARCHAR(64) NOT NULL,prompt TEXT NOT NULL,enabled BOOLEAN NOT NULL DEFAULT TRUE,seed_key VARCHAR(64) NULL,UNIQUE KEY uq_agent_name(class_id,name),UNIQUE KEY uq_agent_seed(class_id,seed_key),FOREIGN KEY(class_id) REFERENCES classes(id))`,
 		`CREATE TABLE IF NOT EXISTS tutor_agent_skills (agent_id BIGINT NOT NULL,skill_id BIGINT NOT NULL,PRIMARY KEY(agent_id,skill_id),FOREIGN KEY(agent_id) REFERENCES tutor_agents(id) ON DELETE CASCADE,FOREIGN KEY(skill_id) REFERENCES tutor_skills(id) ON DELETE CASCADE)`,
@@ -14,6 +15,24 @@ func Migrate(d *sql.DB) error {
 	}
 	for _, q := range stmts {
 		if _, err := d.Exec(q); err != nil {
+			return err
+		}
+	}
+	var resourceCols int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='tutor_skills' AND column_name='resources_json'`).Scan(&resourceCols); err != nil {
+		return err
+	}
+	if resourceCols == 0 {
+		if _, err := d.Exec(`ALTER TABLE tutor_skills ADD COLUMN resources_json JSON NULL`); err != nil {
+			return err
+		}
+	}
+	var traceCols int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='messages' AND column_name='llm_trace_json'`).Scan(&traceCols); err != nil {
+		return err
+	}
+	if traceCols == 0 {
+		if _, err := d.Exec(`ALTER TABLE messages ADD COLUMN llm_trace_json JSON NULL`); err != nil {
 			return err
 		}
 	}
@@ -122,5 +141,5 @@ func seedClass(tx *sql.Tx, classID int64) error {
 			return err
 		}
 	}
-	return nil
+	return seedApps(tx, classID)
 }

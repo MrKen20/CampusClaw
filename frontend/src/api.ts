@@ -19,6 +19,7 @@ export interface MaterialSummary {
 }
 
 export interface MaterialDetail extends MaterialSummary {
+  version: number
   body: string
 }
 
@@ -106,6 +107,8 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  updateMaterial:(id:number,title:string,body:string,version:number)=>request<{id:number;title:string;version:number;index_status:string}>(`/api/materials/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,body,version})}),
+  deleteMaterial:(id:number,version:number)=>request<void>(`/api/materials/${id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({version})}),
   login: async (username: string, password: string): Promise<Me> => {
     const data = await request<{ token: string; user: Me }>('/api/login', {
       method: 'POST',

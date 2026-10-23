@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "CampusClaw API",
-    "version": "0.5.0",
-    "description": "不透明随机 Bearer Token + 服务端会话；不使用 JWT。角色/班级每次从服务器读取。API注解生成，教师配置即时生效；会话锁定智能体；第6课MCP工具发现、批准、多轮调用及审计；教师智能体删除与学生私人对话删除。"
+    "version": "0.7.1",
+    "description": "不透明随机 Bearer Token + 服务端会话；不使用 JWT。角色/班级每次从服务器读取。API注解生成，教师配置即时生效；会话锁定智能体；第6课MCP工具发现、批准、多轮调用及审计；教师智能体删除与学生私人对话删除；四个内置AI应用及模板、SKILL.md/ZIP导入、保留本人LLM诊断API（学生界面无调试入口）；教师应用页维护本班提问模板；资料版本编辑/删除及检索一致性；四应用过滤无关与未使用引用；会话最近活动及消息时间为RFC3339 UTC，SSE与历史一致。"
   },
   "servers": [
     {
@@ -274,6 +274,10 @@
                     },
                     "created_at": {
                       "type": "string"
+                    },
+                    "version": {
+                      "type": "integer",
+                      "minimum": 1
                     }
                   }
                 }
@@ -331,6 +335,308 @@
             }
           }
         ]
+      },
+      "put": {
+        "summary": "教师修改本班资料标题和正文并重建检索",
+        "description": "原子保存当前标题、正文及下载文件，删除旧切片后重建。嵌入失败保留新正文并返回index_status=failed。仅本班教师可写。 仅教师可操作。",
+        "operationId": "put_api_materials_id",
+        "tags": [
+          "materials"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "教师修改本班资料标题和正文并重建检索",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "index_status": {
+                      "type": "string",
+                      "enum": [
+                        "ready",
+                        "failed",
+                        "unavailable"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "标题或正文非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "标题或正文非法"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅教师可修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅教师可修改"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "材料不存在（含跨班）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "材料不存在（含跨班）"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "资料版本已更新，请重新加载",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "资料版本已更新，请重新加载"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "正文超过大小上限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "正文超过大小上限"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "资料维护暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "资料维护暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "body",
+                  "version"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "教师确认删除本班资料及知识库、绑定",
+        "description": "删除正文、切片、智能体绑定和材料记录，清理受控下载文件及远端向量；向量故障时SQL回表拒绝孤立点。二次确认由教师界面执行，种子材料删除后不复活。 仅教师可操作。",
+        "operationId": "delete_api_materials_id",
+        "tags": [
+          "materials"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "教师确认删除本班资料及知识库、绑定"
+          },
+          "400": {
+            "description": "版本非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "版本非法"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅教师可删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅教师可删除"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "材料不存在（含跨班）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "材料不存在（含跨班）"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "资料版本已更新，请重新加载",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "资料版本已更新，请重新加载"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "资料维护暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "资料维护暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "version"
+                ],
+                "properties": {
+                  "version": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/materials/{id}/file": {
@@ -1955,6 +2261,104 @@
         }
       }
     },
+    "/api/skills/import": {
+      "post": {
+        "summary": "上传 SKILL.md、兼容文本或含 SKILL.md 的 ZIP 技能包",
+        "description": "ZIP 最多16项，解压总量128KiB，单文件32KiB；只含一个SKILL.md及resources/references下的UTF-8 .md/.txt。不执行脚本，不自动注入全部附件。 仅教师可操作。",
+        "operationId": "post_api_skills_import",
+        "tags": [
+          "skills"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "上传 SKILL.md、兼容文本或含 SKILL.md 的 ZIP 技能包",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "格式、元数据、工具引用或包边界非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "格式、元数据、工具引用或包边界非法"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅教师可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅教师可操作"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/agents": {
       "get": {
         "summary": "列出本班智能体；学生只见启用者",
@@ -3373,10 +3777,304 @@
         ]
       }
     },
+    "/api/conversations/{id}/messages/{message}/trace": {
+      "get": {
+        "summary": "读取本人消息已选择记录的LLM实际请求与响应",
+        "description": "默认不记录。capture_trace=true后包含工具规划和最终SSE的请求体、响应、状态、截断标记；不含鉴权头。每轮最多8次，每次响应128KiB。 仅学生可使用。",
+        "operationId": "get_api_conversations_id_messages_message_trace",
+        "tags": [
+          "conversations"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "读取本人消息已选择记录的LLM实际请求与响应",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LLMTrace"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅学生本人可查看",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅学生本人可查看"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "消息不存在或未记录调用详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "消息不存在或未记录调用详情"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "message",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/ai-apps": {
+      "get": {
+        "summary": "本班内置AI应用及对应提示词模板",
+        "description": "",
+        "operationId": "get_api_ai_apps",
+        "tags": [
+          "ai-apps"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "本班内置AI应用及对应提示词模板",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AIApp"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai-apps/{key}/launch": {
+      "post": {
+        "summary": "展开应用模板并创建本人独立会话",
+        "description": "仅展开提问，不自动发送LLM；用户可编辑后确认发送。 仅学生可使用。",
+        "operationId": "post_api_ai_apps_key_launch",
+        "tags": [
+          "ai-apps"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "展开应用模板并创建本人独立会话",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation": {
+                      "$ref": "#/components/schemas/Conversation"
+                    },
+                    "prompt": {
+                      "type": "string",
+                      "maxLength": 500
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "字段缺失、超限或应用已停用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "字段缺失、超限或应用已停用"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅学生可启动",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅学生可启动"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "应用不存在或已删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "应用不存在或已删除"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "concept",
+                "reading",
+                "writing",
+                "review"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "fields"
+                ],
+                "properties": {
+                  "fields": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 180
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/conversations/{id}/messages": {
       "post": {
         "summary": "在锁定智能体的会话中流式提问",
-        "description": "真实SSE：首个meta含skill/citations；工具阶段每次meta.tool_calls增量追加真实状态，全部在首个delta前。模型原生多轮tools/call，默认上限3轮、每问6次、会话30次；失败/超限使用已有资料继续回答。delta.text为新增片段，落库后done.message_id；失败error、已生成消息含工具记录保存partial。不同会话并行，同会话409。客户端agent_id/history/class_id被忽略。 智能体删除后的历史仍可读取，但提问409且不新增消息。 仅学生可使用。",
+        "description": "真实SSE：首个meta含skill/citations；工具阶段每次meta.tool_calls增量追加真实状态，全部在首个delta前。模型原生多轮tools/call，默认上限3轮、每问6次、会话30次；失败/超限使用已有资料继续回答。delta.text为新增片段，落库后done.message_id；失败error、已生成消息含工具记录保存partial。不同会话并行，同会话409。客户端agent_id/history/class_id被忽略。 智能体删除后的历史仍可读取，但提问409且不新增消息。 capture_trace默认false；开启后消息has_trace=true，可经trace接口读取；响应128KiB/次、最多8次，超限明确标记。 首个meta含user_created_at/assistant_created_at（RFC3339 UTC），助手开始生成时间与保存记录一致，done/error在保存后含created_at；时间只作界面元数据，不传入LLM。 仅学生可使用。",
         "operationId": "post_api_conversations_id_messages",
         "tags": [
           "conversations"
@@ -3394,7 +4092,7 @@
                 "schema": {
                   "type": "string"
                 },
-                "example": "event: meta\ndata: {\"skill\":null,\"citations\":[]}\n\nevent: meta\ndata: {\"tool_calls\":[{\"ref\":\"formula_hint@campus-tools\",\"status\":\"ok\",\"text\":\"检查乘法分配律\",\"round\":1}]}\n\nevent: delta\ndata: {\"text\":\"先看这一步\"}\n\nevent: done\ndata: {\"message_id\":1}\n\n"
+                "example": "event: meta\ndata: {\"skill\":null,\"citations\":[],\"user_created_at\":\"2026-10-23T00:05:00Z\",\"assistant_created_at\":\"2026-10-23T00:05:01Z\"}\n\nevent: meta\ndata: {\"tool_calls\":[{\"ref\":\"formula_hint@campus-tools\",\"status\":\"ok\",\"text\":\"检查乘法分配律\",\"round\":1}]}\n\nevent: delta\ndata: {\"text\":\"先看这一步\"}\n\nevent: done\ndata: {\"message_id\":1,\"created_at\":\"2026-10-23T00:05:01Z\"}\n\n"
               }
             }
           },
@@ -3499,11 +4197,161 @@
                     "type": "string",
                     "minLength": 2,
                     "maxLength": 500
+                  },
+                  "capture_trace": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "记录本轮实际LLM请求体和原始响应，仅本人查看；无鉴权头"
                   }
                 },
                 "required": [
                   "content"
                 ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ai-apps/{key}/template": {
+      "put": {
+        "summary": "教师在AI应用页修改本班提问模板",
+        "description": "仅更新当前会话班级的提问模板；必须保留本应用全部字段，启动应用使用最新值。version=0表示尚未覆盖默认模板。 仅教师可操作。",
+        "operationId": "put_api_ai_apps_key_template",
+        "tags": [
+          "ai-apps"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "教师在AI应用页修改本班提问模板",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIApp"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "占位符或长度非法",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "占位符或长度非法"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "未登录"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "仅教师可修改",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "仅教师可修改"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "应用不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "应用不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "模板已更新，请重新加载",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "模板已更新，请重新加载"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂时不可用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "error": "服务暂时不可用"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "concept",
+                "reading",
+                "writing",
+                "review"
+              ]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "user_template",
+                  "expected_version"
+                ],
+                "properties": {
+                  "user_template": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "expected_version": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
               }
             }
           }
@@ -3613,6 +4461,11 @@
               "type": "integer",
               "format": "int64"
             }
+          },
+          "app_key": {
+            "type": "string",
+            "readOnly": true,
+            "description": "服务端按内置应用标识派生；客户端不能设置"
           }
         }
       },
@@ -3658,6 +4511,13 @@
           },
           "source_text": {
             "type": "string"
+          },
+          "resources": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "仅存储UTF-8附件，不自动注入模型"
           }
         }
       },
@@ -3679,10 +4539,14 @@
             "type": "string"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "format": "date-time",
+            "description": "服务端RFC3339 UTC时间；updated_at取会话活动与最新已存消息时间的较大值"
           },
           "updated_at": {
-            "type": "string"
+            "type": "string",
+            "format": "date-time",
+            "description": "服务端RFC3339 UTC时间；updated_at取会话活动与最新已存消息时间的较大值"
           },
           "agent_deleted": {
             "type": "boolean",
@@ -3759,6 +4623,14 @@
             "items": {
               "$ref": "#/components/schemas/MCPCall"
             }
+          },
+          "has_trace": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "服务端RFC3339 UTC时间：用户为接收创建时刻，助手为开始生成时刻；北京时间仅在客户端展示"
           }
         }
       },
@@ -3945,6 +4817,120 @@
           },
           "created_at": {
             "type": "string"
+          }
+        }
+      },
+      "AIApp": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "system_template": {
+            "type": "string"
+          },
+          "user_template": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "placeholder": {
+                  "type": "string"
+                },
+                "max_length": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "template_version": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "LLMTrace": {
+        "type": "object",
+        "properties": {
+          "truncated": {
+            "type": "boolean"
+          },
+          "calls": {
+            "type": "array",
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "properties": {
+                "phase": {
+                  "type": "string",
+                  "enum": [
+                    "tool-planning",
+                    "final-stream"
+                  ]
+                },
+                "request": {
+                  "type": "object",
+                  "additionalProperties": true
+                },
+                "request_truncated": {
+                  "type": "boolean"
+                },
+                "response": {
+                  "type": "string"
+                },
+                "response_truncated": {
+                  "type": "boolean"
+                },
+                "http_status": {
+                  "type": "integer"
+                },
+                "started_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "error": {
+                  "type": "string"
+                },
+                "output_text": {
+                  "type": "string",
+                  "description": "原始delta.content合并，未经过引用过滤"
+                },
+                "output_truncated": {
+                  "type": "boolean"
+                },
+                "finish_reason": {
+                  "type": "string"
+                },
+                "usage": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
           }
         }
       },

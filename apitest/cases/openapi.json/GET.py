@@ -11,3 +11,14 @@ def run(c):
  for route in ['/api/agents/{id}','/api/conversations/{id}']:
   assert '204' in doc['paths'][route]['delete']['responses'] and '409' in doc['paths'][route]['delete']['responses']
  assert doc['components']['schemas']['Conversation']['properties']['agent_deleted']['type']=='boolean'
+
+ for path in ['/api/ai-apps','/api/ai-apps/{key}/launch','/api/skills/import','/api/conversations/{id}/messages/{message}/trace']:assert path in doc['paths']
+ assert next(p for p in doc['paths']['/api/ai-apps/{key}/launch']['post']['parameters'] if p['name']=='key')['schema']['type']=='string'
+ assert doc['info']['version']=='0.7.1'
+
+ assert 'put' in doc['paths']['/api/ai-apps/{key}/template']
+ assert 'put' in doc['paths']['/api/materials/{id}'] and 'delete' in doc['paths']['/api/materials/{id}']
+
+ for schema,fields in [('Conversation',['created_at','updated_at']),('Message',['created_at'])]:
+  for field in fields:assert doc['components']['schemas'][schema]['properties'][field]['format']=='date-time'
+ assert 'assistant_created_at' in doc['paths']['/api/conversations/{id}/messages']['post']['description']
